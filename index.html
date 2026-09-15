@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Favicons -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczMicgaGVpZ2h0PSczMicgdmlld0JveD0nMCAwIDMyIDMyJz48cmVjdCB3aWR0aD0nMzInIGhlaWdodD0nMzInIHJ4PSc3JyBmaWxsPScjMjU2M2ViJy8+PHBhdGggZD0nTTEyIDE2di00LjVhNCA0IDAgMCAxIDggMFYxNicgZmlsbD0nbm9uZScgc3Ryb2tlPSd3aGl0ZScgc3Ryb2tlLXdpZHRoPScyLjUnIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcgc3Ryb2tlLWxpbmVqb2luPSdyb3VuZCcvPjxyZWN0IHg9JzcnIHk9JzE2JyB3aWR0aD0nMTgnIGhlaWdodD0nMTInIHJ4PScyLjUnIGZpbGw9J3doaXRlJy8+PC9zdmc+" />
+    <link rel="shortcut icon" href="%BASE_URL%favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="%BASE_URL%apple-touch-icon.png" />
+    <link rel="manifest" href="%BASE_URL%site.webmanifest" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="NOVA SHOP - Des produits utiles au meilleur prix | منتجات مفيدة بأثمنة مناسبة" />
+    <meta property="og:title" content="NOVA SHOP" />
+    <meta property="og:description" content="Des produits utiles au meilleur prix" />
+    <meta property="og:type" content="website" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" />
+    <title>NOVA SHOP</title>
+    <!-- Anti-flash: apply theme class before React renders -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('nova-theme');
+          if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

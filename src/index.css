@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-white text-gray-900 dark:bg-dark-bg dark:text-gray-50 antialiased transition-colors duration-200;
+  }
+
+  [dir="rtl"] {
+    font-family: 'Cairo', 'Noto Sans Arabic', sans-serif;
+  }
+
+  [dir="rtl"] .font-arabic {
+    font-family: 'Cairo', 'Noto Sans Arabic', sans-serif;
+  }
+
+  /* Accessible focus visible */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-blue-500;
+  }
+
+  /* Respect reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Dark mode input base */
+  .dark input,
+  .dark textarea,
+  .dark select {
+    color-scheme: dark;
+  }
+}

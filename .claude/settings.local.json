@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Start-Process \"http://localhost:5173/nova-shop/\")",
+      "PowerShell(Get-Process *)",
+      "PowerShell(Start-Process \"http://localhost:5173/nova-shop/#/products\")",
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(dir D:\\\\Data\\\\OneDrive - Ceritek\\\\Applications\\\\gitHub\\\\githup-workspace\\\\nova-shop\\\\public *)",
+      "Bash(node -e \"const s=require\\('sharp'\\);console.log\\('sharp ok'\\)\")",
+      "Bash(node -e \"const c=require\\('canvas'\\);console.log\\('canvas ok'\\)\")",
+      "Bash(node generate-favicons.mjs)",
+      "Bash(node -e \"require\\('fs'\\).unlinkSync\\('generate-favicons.mjs'\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(node *)",
+      "PowerShell(Get-ChildItem \"D:\\\\Data\\\\OneDrive - Ceritek\\\\Applications\\\\gitHub\\\\githup-workspace\\\\nova-shop\" -Name -File | Where-Object { $_ -match 'eslint|prettier|editorconfig|nvmrc|node-version' })"
+    ]
+  }
+}
