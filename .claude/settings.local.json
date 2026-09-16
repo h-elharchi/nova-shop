@@ -13,7 +13,8 @@
       "Bash(node -e \"require\\('fs'\\).unlinkSync\\('generate-favicons.mjs'\\)\")",
       "Bash(node -e ' *)",
       "Bash(node *)",
-      "PowerShell(Get-ChildItem \"D:\\\\Data\\\\OneDrive - Ceritek\\\\Applications\\\\gitHub\\\\githup-workspace\\\\nova-shop\" -Name -File | Where-Object { $_ -match 'eslint|prettier|editorconfig|nvmrc|node-version' })"
+      "PowerShell(Get-ChildItem \"D:\\\\Data\\\\OneDrive - Ceritek\\\\Applications\\\\gitHub\\\\githup-workspace\\\\nova-shop\" -Name -File | Where-Object { $_ -match 'eslint|prettier|editorconfig|nvmrc|node-version' })",
+      "Bash(Test-Path *)"
     ]
   }
 }
