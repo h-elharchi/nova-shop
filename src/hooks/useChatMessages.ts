@@ -28,21 +28,24 @@ export function useChatMessages(conversationId: string | null) {
       return
     }
 
+    let cancelled = false
     setLoading(true)
 
     loadMessages(conversationId).then(msgs => {
-      if (!mounted.current) return
+      if (cancelled || !mounted.current) return
       setMessages(msgs)
       setLoading(false)
     })
 
-    // Subscribe to new messages
+    // Remove previous channel before creating a new one
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current)
+      channelRef.current = null
     }
 
+    // Unique channel name per subscription to prevent "callbacks after subscribe" errors
     const channel = supabase
-      .channel(`messages:${conversationId}`)
+      .channel(`msgs-${conversationId}-${Date.now()}`)
       .on(
         'postgres_changes',
         {
@@ -55,7 +58,6 @@ export function useChatMessages(conversationId: string | null) {
           if (!mounted.current) return
           const newMsg = payload.new as ChatMessage
           setMessages(prev => {
-            // Avoid duplicates
             if (prev.some(m => m.id === newMsg.id)) return prev
             return [...prev, newMsg]
           })
@@ -64,6 +66,14 @@ export function useChatMessages(conversationId: string | null) {
       .subscribe()
 
     channelRef.current = channel
+
+    return () => {
+      cancelled = true
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
+    }
   }, [conversationId])
 
   const send = useCallback(async (

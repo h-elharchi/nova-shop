@@ -39,7 +39,7 @@ export function ChatWidget({
   return (
     <div
       className="flex flex-col bg-white dark:bg-dark-surface rounded-2xl shadow-2xl border border-gray-100 dark:border-dark-border overflow-hidden"
-      style={{ width: '340px', height: '520px' }}
+      style={{ width: 'min(340px, calc(100vw - 24px))', height: 'min(520px, calc(100vh - 120px))' }}
     >
       <ChatHeader
         onClose={onResetToIdle}

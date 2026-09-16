@@ -10,45 +10,70 @@ export function useChatPresence(adminId: string | null) {
   const [agents, setAgents] = useState<ChatAgent[]>([])
   const [waitingCount, setWaitingCount] = useState(0)
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const agentChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const convChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const mounted = useRef(true)
+  // Unique suffix per hook instance — prevents channel name collisions when
+  // the same hook is mounted in multiple places (e.g. AdminLayout + ChatPage)
+  const instanceId = useRef(`${Date.now()}-${Math.random().toString(36).slice(2, 7)}`)
+
+  const stopHeartbeat = useCallback(() => {
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current)
+      heartbeatRef.current = null
+    }
+  }, [])
+
+  const removeChannels = useCallback(() => {
+    if (agentChannelRef.current) {
+      supabase.removeChannel(agentChannelRef.current)
+      agentChannelRef.current = null
+    }
+    if (convChannelRef.current) {
+      supabase.removeChannel(convChannelRef.current)
+      convChannelRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     mounted.current = true
     return () => {
       mounted.current = false
-      cleanup()
+      stopHeartbeat()
+      removeChannels()
     }
+  }, [stopHeartbeat, removeChannels])
+
+  const loadWaitingCount = useCallback(async () => {
+    const { count } = await supabase
+      .from('chat_conversations')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'waiting')
+    if (mounted.current) setWaitingCount(count ?? 0)
   }, [])
 
-  const cleanup = useCallback(() => {
-    if (heartbeatRef.current) clearInterval(heartbeatRef.current)
-    if (channelRef.current) supabase.removeChannel(channelRef.current)
-    if (convChannelRef.current) supabase.removeChannel(convChannelRef.current)
-  }, [])
-
-  // Subscribe to agents and waiting conversations count
   useEffect(() => {
     if (!adminId) return
 
-    ensureChatAgent().then(() => {
-      if (!mounted.current) return
+    const id = instanceId.current
+    let cancelled = false
 
-      // Load current agent status
+    ensureChatAgent().then(() => {
+      if (cancelled || !mounted.current) return
+
       supabase
         .from('chat_agents')
         .select('*')
         .then(({ data }) => {
-          if (!mounted.current || !data) return
+          if (cancelled || !mounted.current || !data) return
           setAgents(data as ChatAgent[])
           const mine = (data as ChatAgent[]).find(a => a.user_id === adminId)
           if (mine) setMyStatus(mine.status)
         })
 
-      // Subscribe to agent changes
+      if (agentChannelRef.current) supabase.removeChannel(agentChannelRef.current)
       const agentChannel = supabase
-        .channel('admin-agents')
+        .channel(`agents-${id}`)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'chat_agents' },
@@ -64,51 +89,43 @@ export function useChatPresence(adminId: string | null) {
           }
         )
         .subscribe()
+      agentChannelRef.current = agentChannel
 
-      channelRef.current = agentChannel
-
-      // Subscribe to waiting conversations for badge count
+      if (convChannelRef.current) supabase.removeChannel(convChannelRef.current)
       const convChannel = supabase
-        .channel('admin-waiting-conv')
+        .channel(`waiting-conv-${id}`)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'chat_conversations' },
           () => {
-            if (!mounted.current) return
-            loadWaitingCount()
+            if (mounted.current) loadWaitingCount()
           }
         )
         .subscribe()
-
       convChannelRef.current = convChannel
 
       loadWaitingCount()
     })
-  }, [adminId])
 
-  const loadWaitingCount = useCallback(async () => {
-    const { count } = await supabase
-      .from('chat_conversations')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'waiting')
-    if (mounted.current) setWaitingCount(count ?? 0)
-  }, [])
+    return () => {
+      cancelled = true
+      removeChannels()
+    }
+  }, [adminId, loadWaitingCount, removeChannels])
 
   const setStatus = useCallback(async (status: ChatAgentStatus) => {
     if (!adminId) return
     setMyStatus(status)
     await updateAgentHeartbeat(status)
 
-    // Start/stop heartbeat
-    if (heartbeatRef.current) clearInterval(heartbeatRef.current)
+    stopHeartbeat()
     if (status !== 'offline') {
       heartbeatRef.current = setInterval(() => {
         if (mounted.current) updateAgentHeartbeat()
       }, HEARTBEAT_MS)
     }
-  }, [adminId])
+  }, [adminId, stopHeartbeat])
 
-  // Set offline on unmount
   useEffect(() => {
     return () => {
       if (adminId && myStatus !== 'offline') {
@@ -170,6 +187,13 @@ export function useAdminConversations(filter: 'waiting' | 'active' | 'closed_tim
       .subscribe()
 
     channelRef.current = channel
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
+    }
   }, [fetchConversations, filter])
 
   return { conversations, loading, refetch: fetchConversations }

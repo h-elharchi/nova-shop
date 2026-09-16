@@ -1,6 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { useI18n } from '../../context/LanguageContext'
-import { useAuth } from '../../hooks/useAuth'
 import { useChatMessages } from '../../hooks/useChatMessages'
 import { ChatMessage } from './ChatMessage'
 import { ChatInput } from './ChatInput'
@@ -11,8 +9,6 @@ interface ChatWindowProps {
 }
 
 export function ChatWindow({ conversation }: ChatWindowProps) {
-  const { t } = useI18n()
-  const { user } = useAuth()
   const { messages, loading, sending, send } = useChatMessages(conversation.id)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -20,17 +16,17 @@ export function ChatWindow({ conversation }: ChatWindowProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Client-facing window: sender is always 'customer'
   const handleSend = async (text: string) => {
-    const senderType = user ? 'admin' : 'customer'
-    await send(text, senderType, user?.id)
+    await send(text, 'customer')
   }
 
   const isActive = conversation.status === 'active'
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-0.5">
+      <div className="flex-1 overflow-y-auto p-3">
         {loading ? (
           <div className="flex justify-center pt-8">
             <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -38,17 +34,14 @@ export function ChatWindow({ conversation }: ChatWindowProps) {
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center py-8">
             <div className="text-3xl mb-2">💬</div>
-            <p className="text-xs text-gray-400 dark:text-gray-500">
-              {t('chat.searching_subtitle')}
-            </p>
           </div>
         ) : (
-          messages.map(msg => (
-            <ChatMessage key={msg.id} message={msg} />
-          ))
+          <div className="space-y-0.5">
+            {messages.map(msg => (
+              <ChatMessage key={msg.id} message={msg} />
+            ))}
+          </div>
         )}
-
-        {/* Typing indicator placeholder area */}
         <div ref={messagesEndRef} />
       </div>
 

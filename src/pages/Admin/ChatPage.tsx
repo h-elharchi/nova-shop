@@ -34,16 +34,8 @@ export function AdminChatPage() {
     : historyLoading
 
   const { messages, loading: msgsLoading, sending, send } = useChatMessages(
-    selectedConv?.status === 'active' ? selectedConv.id : null
+    selectedConv?.id ?? null
   )
-
-  // Also load messages for history/closed conv
-  const { messages: histMsgs, loading: histMsgsLoading } = useChatMessages(
-    selectedConv && selectedConv.status !== 'active' ? selectedConv.id : null
-  )
-
-  const displayMessages = selectedConv?.status === 'active' ? messages : histMsgs
-  const displayMsgsLoading = selectedConv?.status === 'active' ? msgsLoading : histMsgsLoading
 
   // Update selected conv when conversations list updates
   useEffect(() => {
@@ -98,7 +90,7 @@ export function AdminChatPage() {
   }
 
   const tabClass = (tab: AdminChatTab) =>
-    `flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+    `flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors shrink-0 whitespace-nowrap ${
       activeTab === tab
         ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
         : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
@@ -165,7 +157,7 @@ export function AdminChatPage() {
           {/* Left panel */}
           <div className="w-80 shrink-0 flex flex-col bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border overflow-hidden">
             {/* Tabs */}
-            <div className="flex gap-1 p-2 border-b border-gray-100 dark:border-dark-border">
+            <div className="flex gap-1 p-2 border-b border-gray-100 dark:border-dark-border overflow-x-auto">
               <button className={tabClass('queue')} onClick={() => setActiveTab('queue')}>
                 <Clock className="w-3.5 h-3.5" />
                 {t('chat.admin_queue')}
@@ -296,16 +288,16 @@ export function AdminChatPage() {
 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-3 space-y-0.5">
-                  {displayMsgsLoading ? (
+                  {msgsLoading ? (
                     <div className="flex justify-center pt-8">
                       <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                     </div>
-                  ) : displayMessages.length === 0 ? (
+                  ) : messages.length === 0 ? (
                     <div className="flex items-center justify-center h-full">
                       <p className="text-sm text-gray-400 dark:text-gray-500">{t('chat.admin_no_active')}</p>
                     </div>
                   ) : (
-                    displayMessages.map(msg => (
+                    messages.map(msg => (
                       <ChatMessage key={msg.id} message={msg} />
                     ))
                   )}
