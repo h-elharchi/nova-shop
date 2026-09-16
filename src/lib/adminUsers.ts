@@ -47,3 +47,7 @@ export async function updateStaffUser(params: {
 export async function resetStaffPassword(email: string): Promise<void> {
   await call('reset-password', { email })
 }
+
+export async function deleteStaffUser(userId: string): Promise<void> {
+  await call('delete', { user_id: userId })
+}

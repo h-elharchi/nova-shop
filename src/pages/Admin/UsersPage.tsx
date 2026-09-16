@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { UserPlus, User, MoreVertical, CheckCircle, XCircle, RefreshCw, AlertCircle, Mail } from 'lucide-react'
+import { UserPlus, User, MoreVertical, CheckCircle, XCircle, RefreshCw, AlertCircle, Mail, Trash2 } from 'lucide-react'
 import { AdminLayout } from './AdminLayout'
 import { useI18n } from '../../context/LanguageContext'
 import { useStaffAuth } from '../../hooks/useStaffAuth'
-import { listStaffUsers, inviteStaffUser, updateStaffUser, resetStaffPassword } from '../../lib/adminUsers'
+import { listStaffUsers, inviteStaffUser, updateStaffUser, resetStaffPassword, deleteStaffUser } from '../../lib/adminUsers'
 import type { StaffProfile, StaffRole } from '../../types'
 
 type InviteForm = {
@@ -28,6 +28,7 @@ export function AdminUsersPage() {
 
   const [actionMsg, setActionMsg]   = useState<{ ok: boolean; text: string } | null>(null)
   const [menuOpen, setMenuOpen]     = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -98,6 +99,19 @@ export function AdminUsersPage() {
       setActionMsg({ ok: false, text: err instanceof Error ? err.message : t('common.error') })
     }
     setMenuOpen(null)
+  }
+
+  const handleDelete = async (u: StaffProfile) => {
+    try {
+      await deleteStaffUser(u.id)
+      setActionMsg({ ok: true, text: t('users.delete_success') })
+      setTimeout(() => setActionMsg(null), 3000)
+      await load()
+    } catch (err) {
+      setActionMsg({ ok: false, text: err instanceof Error ? err.message : t('users.delete_error') })
+    }
+    setMenuOpen(null)
+    setConfirmDelete(null)
   }
 
   const handleResetPassword = async (u: StaffProfile) => {
@@ -274,7 +288,7 @@ export function AdminUsersPage() {
                         {!isSelf && (
                           <>
                             <button
-                              onClick={() => setMenuOpen(menuOpen === u.id ? null : u.id)}
+                              onClick={() => { setMenuOpen(menuOpen === u.id ? null : u.id); setConfirmDelete(null) }}
                               className={`p-1.5 rounded-lg transition-colors ${
                                 menuOpen === u.id
                                   ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
@@ -323,6 +337,35 @@ export function AdminUsersPage() {
                                   <RefreshCw className="w-3.5 h-3.5" />
                                   {t('users.reset_password')}
                                 </button>
+                                <div className="my-1 border-t border-gray-100 dark:border-dark-border" />
+                                {/* Supprimer */}
+                                {confirmDelete === u.id ? (
+                                  <div className="px-4 py-2.5">
+                                    <p className="text-xs text-red-600 dark:text-red-400 mb-2 font-medium">{t('users.confirm_delete')}</p>
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={() => handleDelete(u)}
+                                        className="flex-1 px-2 py-1 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                                      >
+                                        {t('users.delete_confirm_yes')}
+                                      </button>
+                                      <button
+                                        onClick={() => setConfirmDelete(null)}
+                                        className="flex-1 px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                                      >
+                                        {t('users.delete_confirm_no')}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => setConfirmDelete(u.id)}
+                                    className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-2"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    {t('users.delete')}
+                                  </button>
+                                )}
                               </div>
                             )}
                           </>
