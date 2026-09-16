@@ -14,7 +14,10 @@
       "Bash(node -e ' *)",
       "Bash(node *)",
       "PowerShell(Get-ChildItem \"D:\\\\Data\\\\OneDrive - Ceritek\\\\Applications\\\\gitHub\\\\githup-workspace\\\\nova-shop\" -Name -File | Where-Object { $_ -match 'eslint|prettier|editorconfig|nvmrc|node-version' })",
-      "Bash(Test-Path *)"
+      "Bash(Test-Path *)",
+      "WebSearch",
+      "Bash(gh api *)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }
