@@ -1,9 +1,10 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Package, PlusCircle, Tag, LogOut, ShoppingBag, Menu, ShoppingCart, Sun, Moon } from 'lucide-react'
+import { LayoutDashboard, Package, PlusCircle, Tag, LogOut, ShoppingBag, Menu, ShoppingCart, Sun, Moon, MessageSquare } from 'lucide-react'
 import { useState } from 'react'
 import { useI18n } from '../../context/LanguageContext'
 import { useThemeCtx } from '../../context/ThemeContext'
 import { useAuth } from '../../hooks/useAuth'
+import { useChatPresence } from '../../hooks/useChatPresence'
 
 interface AdminLayoutProps {
   children: React.ReactNode
@@ -12,9 +13,10 @@ interface AdminLayoutProps {
 export function AdminLayout({ children }: AdminLayoutProps) {
   const { t } = useI18n()
   const { isDark, toggleTheme } = useThemeCtx()
-  const { signOut } = useAuth()
+  const { signOut, user } = useAuth()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { waitingCount } = useChatPresence(user?.id ?? null)
 
   const handleLogout = async () => {
     await signOut()
@@ -22,11 +24,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   }
 
   const navItems = [
-    { to: '/admin', icon: <LayoutDashboard className="w-5 h-5" />, label: t('admin.dashboard'), end: true },
-    { to: '/admin/products', icon: <Package className="w-5 h-5" />, label: t('admin.products') },
-    { to: '/admin/products/new', icon: <PlusCircle className="w-5 h-5" />, label: t('admin.add_product') },
-    { to: '/admin/categories', icon: <Tag className="w-5 h-5" />, label: t('admin.categories') },
-    { to: '/admin/orders', icon: <ShoppingCart className="w-5 h-5" />, label: t('order.orders') },
+    { to: '/admin', icon: <LayoutDashboard className="w-5 h-5" />, label: t('admin.dashboard'), end: true, badge: 0 },
+    { to: '/admin/products', icon: <Package className="w-5 h-5" />, label: t('admin.products'), badge: 0 },
+    { to: '/admin/products/new', icon: <PlusCircle className="w-5 h-5" />, label: t('admin.add_product'), badge: 0 },
+    { to: '/admin/categories', icon: <Tag className="w-5 h-5" />, label: t('admin.categories'), badge: 0 },
+    { to: '/admin/orders', icon: <ShoppingCart className="w-5 h-5" />, label: t('order.orders'), badge: 0 },
+    { to: '/admin/chat', icon: <MessageSquare className="w-5 h-5" />, label: t('chat.admin_title'), badge: waitingCount },
   ]
 
   const SidebarContent = () => (
@@ -55,6 +58,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           >
             {item.icon}
             {item.label}
+            {item.badge > 0 && (
+              <span className="ml-auto inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full">
+                {item.badge}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

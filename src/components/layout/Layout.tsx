@@ -1,6 +1,7 @@
 import { Header } from './Header'
 import { Footer } from './Footer'
 import { WhatsAppFloat } from '../whatsapp/WhatsAppFloat'
+import { ChatButton } from '../chat/ChatButton'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -15,6 +16,7 @@ export function Layout({ children }: LayoutProps) {
       </main>
       <Footer />
       <WhatsAppFloat />
+      <ChatButton />
     </div>
   )
 }

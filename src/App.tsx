@@ -15,6 +15,7 @@ import { AdminProductsPage } from './pages/Admin/ProductsPage'
 import { ProductFormPage } from './pages/Admin/ProductFormPage'
 import { AdminCategoriesPage } from './pages/Admin/CategoriesPage'
 import { AdminOrdersPage } from './pages/Admin/OrdersPage'
+import { AdminChatPage } from './pages/Admin/ChatPage'
 import { ProtectedRoute } from './pages/Admin/ProtectedRoute'
 
 function AppContent() {
@@ -38,6 +39,7 @@ function AppContent() {
           <Route path="/admin/products/:id/edit" element={<ProtectedRoute><ProductFormPage /></ProtectedRoute>} />
           <Route path="/admin/categories" element={<ProtectedRoute><AdminCategoriesPage /></ProtectedRoute>} />
           <Route path="/admin/orders" element={<ProtectedRoute><AdminOrdersPage /></ProtectedRoute>} />
+          <Route path="/admin/chat" element={<ProtectedRoute><AdminChatPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </LanguageContext.Provider>
