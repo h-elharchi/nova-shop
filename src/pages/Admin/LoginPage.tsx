@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react'
+import { useState, useEffect, FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ShoppingBag } from 'lucide-react'
 import { useI18n } from '../../context/LanguageContext'
@@ -6,12 +6,19 @@ import { useAuth } from '../../hooks/useAuth'
 
 export function AdminLoginPage() {
   const { t } = useI18n()
-  const { signIn } = useAuth()
+  const { user, loading: authLoading, signIn } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Si l'utilisateur est déjà connecté, redirection directe vers /admin
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate('/admin', { replace: true })
+    }
+  }, [user, authLoading, navigate])
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -22,8 +29,17 @@ export function AdminLoginPage() {
     if (err) {
       setError(err.message)
     } else {
-      navigate('/admin')
+      navigate('/admin', { replace: true })
     }
+  }
+
+  // Ne pas afficher le formulaire pendant la vérification de session
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-dark-bg">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
   }
 
   return (

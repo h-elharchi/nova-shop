@@ -23,7 +23,8 @@ import { AdminUsersPage } from './pages/Admin/UsersPage'
 import { SetPasswordPage } from './pages/SetPasswordPage'
 import { ProtectedRoute } from './pages/Admin/ProtectedRoute'
 
-// Détecte les liens d'invitation / reset-password et redirige vers /set-password
+// Redirige vers /set-password uniquement pour les flux d'invitation et de
+// récupération de mot de passe. NE déclenchement PAS sur un login normal.
 function AuthRedirectHandler() {
   const navigate = useNavigate()
   const handledRef = useRef(false)
@@ -31,9 +32,19 @@ function AuthRedirectHandler() {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (handledRef.current) return
-      if (event === 'SIGNED_IN' || event === 'PASSWORD_RECOVERY') {
+
+      // Lien de récupération (reset password via email)
+      if (event === 'PASSWORD_RECOVERY') {
+        handledRef.current = true
+        navigate('/set-password', { replace: true })
+        return
+      }
+
+      // Lien d'invitation — détecté uniquement via le hash de l'URL
+      // (ne pas interférer avec un login normal)
+      if (event === 'SIGNED_IN') {
         const hash = window.location.hash
-        if (hash.includes('type=invite') || hash.includes('type=recovery') || event === 'PASSWORD_RECOVERY') {
+        if (hash.includes('type=invite')) {
           handledRef.current = true
           navigate('/set-password', { replace: true })
         }

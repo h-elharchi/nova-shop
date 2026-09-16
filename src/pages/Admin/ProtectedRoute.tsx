@@ -3,6 +3,10 @@ import { useStaffAuth } from '../../hooks/useStaffAuth'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
+  // 'admin' → réservé aux admins uniquement (gestion users, catalogue, catégories)
+  // 'agent' → authentification seule, rôle non vérifié
+  //           (dashboard, chat, commandes, compte)
+  //           La protection réelle vient de la RLS Supabase côté serveur.
   requiredRole?: 'admin' | 'agent'
 }
 
@@ -17,32 +21,27 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
     )
   }
 
-  // Utilisateur non connecté
+  // Utilisateur non connecté → login
   if (!user) {
     return <Navigate to="/admin/login" replace />
   }
 
-  // Compte explicitement désactivé (is_active: false).
-  // Si profile est null (requête échouée / migration non exécutée), on ne bloque
-  // pas pour ne pas enfermer les admins existants.
-  if (profile !== null && !profile.is_active) {
+  // Compte explicitement désactivé (seulement si profil chargé)
+  if (profile !== null && profile.is_active === false) {
     return <Navigate to="/admin/login" replace />
   }
 
-  // Page réservée aux admins :
-  // — Si le profil est chargé et que le rôle n'est pas 'admin' → /admin
-  // — Si le profil est null (schema pas encore migré) → on laisse passer ;
-  //   la protection réelle est assurée par la RLS côté Supabase.
+  // Pages réservées aux admins seulement :
+  // Bloque uniquement si le profil est chargé ET que le rôle est confirmé non-admin.
+  // Si profil null (migration non exécutée ou profil manquant), on laisse passer —
+  // la RLS protège côté Supabase.
   if (requiredRole === 'admin' && profile !== null && profile.role !== 'admin') {
     return <Navigate to="/admin" replace />
   }
 
-  // Page réservée aux agents + admins :
-  // — Même logique : si profil chargé et rôle invalide → login
-  // — Si null → on laisse passer (RLS protège)
-  if (requiredRole === 'agent' && profile !== null && !['admin', 'agent'].includes(profile.role)) {
-    return <Navigate to="/admin/login" replace />
-  }
+  // Pages agent (requiredRole='agent') : authentification seule.
+  // On ne vérifie PAS le rôle ici pour rester compatible avec l'ancien schéma
+  // (profiles.role = 'user' par défaut avant migration supabase-accounts.sql).
 
   return <>{children}</>
 }
