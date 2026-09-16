@@ -1,16 +1,18 @@
 # CLAUDE.md — NOVA SHOP
 
 Mémoire technique du projet pour Claude Code.
-Toujours lire ce fichier avant toute modification.
+Toujours lire ce fichier en entier avant toute modification.
 
 ---
 
 ## 1. Project Overview
 
 NOVA SHOP est une boutique e-commerce bilingue (Français / Arabe) ciblant le marché marocain.
-Les clients commandent via WhatsApp ou via un formulaire en ligne. L'admin gère les produits, catégories et commandes depuis un dashboard protégé.
+Les clients commandent via WhatsApp ou via un formulaire en ligne. L'admin et les agents CRC gèrent les produits, catégories, commandes et le chat client depuis un dashboard protégé.
 
 **URL de production :** `https://<USERNAME>.github.io/nova-shop/`
+
+**État du projet : Lots 1–6 livrés (Lot 5 = Base clients + Commandes multi-canal, Lot 6 = Canal email Gmail). Déploiement en attente de push.**
 
 ---
 
@@ -21,27 +23,45 @@ Les clients commandent via WhatsApp ou via un formulaire en ligne. L'admin gère
 - Administration sécurisée (produits, catégories, commandes)
 - Déploiement statique sur GitHub Pages (aucun serveur backend)
 - Prise de commande sans système de paiement en ligne (paiement à la livraison)
-- Chat en temps réel client ↔ admin avec file d'attente et présence agent (Supabase Realtime)
+- Chat en temps réel client ↔ agent CRC avec file d'attente, présence agent, wrap-up, transfert
+- Supervision temps réel des agents et KPIs (taux de prise, DMA, DMT, niveau de service)
+- Historique paginé des conversations avec export Excel
+- Base clients centralisée (déduplication par téléphone, notes internes, historique 360°)
+- Commandes multi-canal (site / whatsapp / email / chat / phone), 12 statuts, saisie admin
+- Canal email Gmail : boîte de réception, threads, réponse, archivage, connexion OAuth2 via Edge Functions
 
 ---
 
 ## 3. Architecture Générale
 
 ```
-Frontend (React SPA)
+Frontend (React SPA — HashRouter)
       │
       ├── Supabase JS Client
-      │       ├── Supabase Auth (email/password admin + signInAnonymously client)
-      │       ├── Supabase Database (PostgreSQL)
-      │       ├── Supabase Storage (product-images, product-videos)
+      │       ├── Supabase Auth (email/password staff + signInAnonymously client)
+      │       ├── Supabase Database (PostgreSQL + RLS + SECURITY DEFINER functions)
+      │       ├── Supabase Storage (product-images, product-videos, avatars)
       │       └── Supabase Realtime (chat_messages, chat_conversations, chat_agents)
       │
-      └── WhatsApp API (wa.me — lien external)
+      ├── WhatsApp API (wa.me — lien externe)
+      └── Supabase Edge Functions (Deno — gmail-oauth-callback, gmail-sync, gmail-send)
+              └── Google Gmail API (OAuth2 PKCE, refresh token stocké dans Supabase Vault)
 
-Build → dist/  →  GitHub Actions  →  GitHub Pages
+Build Vite → dist/ → GitHub Actions → GitHub Pages
 ```
 
-**Pas de backend custom.** Toute la logique serveur est gérée par Supabase (RLS, triggers, fonctions SQL, Realtime).
+**Pas de backend custom exposé.** Toute la logique serveur est gérée par Supabase (RLS, triggers, fonctions SQL `SECURITY DEFINER`, Realtime) + Edge Functions Deno pour le canal Gmail.
+
+**Secrets Edge Functions (jamais dans le frontend) :** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SITE_URL`
+
+**Arbre des Providers (App.tsx) :**
+```
+HashRouter
+  └── ThemeContext.Provider
+        └── LanguageContext.Provider
+              └── AgentProvider  ← useChatPresence singleton (partagé tout l'admin)
+                    └── Routes
+```
 
 ---
 
@@ -50,763 +70,562 @@ Build → dist/  →  GitHub Actions  →  GitHub Pages
 | Technologie | Version | Rôle |
 |---|---|---|
 | React | ^18.3.1 | UI framework |
-| TypeScript | ^5.5.3 | Typage statique |
+| TypeScript | ^5.5.3 | Typage statique strict |
 | Vite | ^5.4.1 | Build tool, dev server |
 | Tailwind CSS | ^3.4.11 | Styles utilitaires |
 | @supabase/supabase-js | ^2.45.0 | Client Supabase (BaaS) |
-| react-router-dom | ^6.26.2 | Routing SPA |
+| react-router-dom | ^6.26.2 | Routing SPA (HashRouter) |
 | lucide-react | ^0.441.0 | Icônes |
-| xlsx | ^0.18.5 | Export Excel |
-| react-helmet-async | ^2.0.5 | En dépendance — NON UTILISÉ dans le code actuel |
+| xlsx | ^0.18.5 | Export Excel (commandes + conversations) |
+| react-helmet-async | ^2.0.5 | En dépendance — NON UTILISÉ |
 | postcss | ^8.4.45 | Compilation CSS |
 | autoprefixer | ^10.4.20 | Préfixes CSS |
 
 ---
 
-## 5. Structure du Projet
+## 5. Fichiers SQL — Ordre d'exécution STRICT
+
+**Tous les fichiers sont dans la racine du projet. Exécuter dans cet ordre dans Supabase SQL Editor :**
+
+| Ordre | Fichier | Contenu |
+|---|---|---|
+| 1 | `supabase-setup.sql` | Tables : categories, products, product_images, profiles. RLS. Triggers updated_at. Trigger handle_new_user. Fonction is_admin(). |
+| 2 | `supabase-orders.sql` | Table orders + index + RLS |
+| 3 | `supabase-chat.sql` | Tables : chat_conversations, chat_messages, chat_agents. RLS. Fonctions : ensure_chat_agent, claim_conversation, close_conversation, assign_to_available_admin, timeout_conversation, check_agents_online. |
+| 4 | `supabase-accounts.sql` | **Lot 1.** Étend profiles (first_name, last_name, avatar_url, role→ agent/admin). Fonction is_staff(). Bucket avatars. Invitations par email. RLS mis à jour pour is_staff(). |
+| 5 | `supabase-crc.sql` | **Lot 2.** Étend chat_agents (capacity, active_conversations_count, pause_reason_id, status_changed_at, statut pause). Étend chat_conversations (assigned_at, closed_at, disposition_code_id, wrap_up_seconds, internal_notes, transferred_from_id). Tables CRC : crc_settings, crc_pause_reasons, crc_disposition_codes, crc_quick_replies. RPCs : update_agent_heartbeat(TEXT,UUID), claim_conversation (avec capacité), close_conversation_with_wrapup, transfer_conversation, get_client_360. |
+| 6 | `supabase-supervision.sql` | **Lot 3.** Fonctions : get_agents_dashboard(), get_supervision_kpis(period,date_from,date_to,agent_id), get_conversation_history(status,agent_id,…,page,page_size). |
+| 7 | `supabase-customers.sql` | **Lot 5.** Table customers (phone UNIQUE, source). Trigger updated_at. RLS is_staff(). Realtime. |
+| 8 | `supabase-orders-v2.sql` | **Lot 5.** Ajoute customer_id, channel (5 valeurs), assigned_agent_id, notes, callback_at à orders. Migration statuts (completed→delivered, 12 statuts). RPC create_order_admin (SECURITY DEFINER). |
+| 8b | `migrate-customers.sql` | **Lot 5 — migration une seule fois.** Peuple customers depuis orders existantes, met à jour orders.customer_id. |
+| 9 | `supabase-email.sql` | **Lot 6.** Vault helpers (store/read/update_vault_secret, GRANT service_role uniquement). Tables : email_accounts, email_messages, email_sync_log. RLS. Realtime. Vue email_messages_view. Fonction match_customer_by_email_address. |
+
+**⚠ Après modification d'une fonction SQL (signature ou type de retour), faire `DROP FUNCTION IF EXISTS ...` avant `CREATE OR REPLACE`.**
+
+---
+
+## 6. Structure du Projet
 
 ```
 nova-shop/
-├── .env                          # Variables d'env (NE PAS COMMITTER)
-├── .env.example                  # ⚠ Contient des préfixes NEXT_PUBLIC_ incorrects
-├── .github/workflows/deploy.yml  # CI/CD GitHub Actions → GitHub Pages
-├── index.html                    # Point d'entrée HTML, anti-flash dark mode
-├── vite.config.ts                # base: '/nova-shop/' — CRITIQUE pour GitHub Pages
-├── tailwind.config.js            # darkMode: 'class', couleurs custom nova/dark
-├── tsconfig.app.json             # strict: true, noUnusedLocals/Parameters
-├── postcss.config.js             # tailwindcss + autoprefixer
-├── supabase-setup.sql            # SQL: tables categories/products/product_images/profiles + RLS
-├── supabase-orders.sql           # SQL: table orders + RLS
-├── supabase-chat.sql             # SQL: tables chat_conversations/chat_messages/chat_agents + RLS + fonctions
-│
-├── public/
-│   ├── favicon.ico / .svg / .png # Favicons multi-formats
-│   ├── site.webmanifest          # PWA manifest (start_url: '/nova-shop/')
-│   └── robots.txt
+├── .env                              # Variables d'env (NE PAS COMMITTER)
+├── .env.example                      # ⚠ Préfixes NEXT_PUBLIC_ incorrects
+├── .github/workflows/deploy.yml      # CI/CD GitHub Actions → GitHub Pages
+├── supabase/
+│   └── functions/
+│       ├── gmail-oauth-callback/index.ts  # Lot 6 : échange code OAuth2, stocke refresh token en Vault
+│       ├── gmail-sync/index.ts            # Lot 6 : fetch nouveaux emails Gmail → email_messages
+│       └── gmail-send/index.ts            # Lot 6 : envoi email via Gmail API, stocke en email_messages
+├── index.html                        # HTML entry + anti-flash dark mode script
+├── vite.config.ts                    # base: '/nova-shop/' — CRITIQUE
+├── tailwind.config.js                # darkMode: 'class', couleurs custom dark
+├── tsconfig.app.json                 # strict: true, noUnusedLocals/Parameters
+├── supabase-setup.sql                # Base e-commerce
+├── supabase-orders.sql               # Commandes (schéma initial)
+├── supabase-chat.sql                 # Chat temps réel
+├── supabase-accounts.sql             # Lot 1 : comptes, rôles, avatars
+├── supabase-crc.sql                  # Lot 2 : CRC, wrap-up, transfert
+├── supabase-supervision.sql          # Lot 3 : KPI, supervision, historique
+├── supabase-customers.sql            # Lot 5 : table customers, RLS, Realtime
+├── supabase-orders-v2.sql            # Lot 5 : migration statuts + canal + RPC create_order_admin
+├── migrate-customers.sql             # Lot 5 : script migration une seule fois (peuple customers)
+├── supabase-email.sql                # Lot 6 : email_accounts, email_messages, Vault helpers
 │
 └── src/
-    ├── main.tsx                  # Entrée React, StrictMode
-    ├── App.tsx                   # HashRouter + providers + routes
-    ├── index.css                 # Tailwind directives, RTL font, dark mode body
-    ├── vite-env.d.ts             # Types Vite
+    ├── main.tsx
+    ├── App.tsx                       # HashRouter + providers + toutes les routes
+    ├── index.css                     # Tailwind + RTL font + dark mode
     │
     ├── types/
-    │   ├── index.ts              # Types e-commerce (Product, Category, Order, Profile…)
-    │   └── chat.ts               # Types chat (ChatConversation, ChatMessage, ChatAgent, états…)
-    ├── i18n/translations.ts      # Traductions FR + AR — inclut section chat.*
+    │   ├── index.ts                  # Types e-commerce (Product, Category, Order, Profile…)
+    │   └── chat.ts                   # Types chat + CRC + supervision (voir section 9)
+    │
+    ├── i18n/translations.ts          # Traductions FR + AR — toutes les sections
     │
     ├── context/
-    │   ├── LanguageContext.ts    # Context React + hook useI18n()
-    │   └── ThemeContext.ts       # Context React + hook useThemeCtx()
+    │   ├── LanguageContext.ts        # Context langue + hook useI18n()
+    │   ├── ThemeContext.ts           # Context thème + hook useThemeCtx()
+    │   └── AgentContext.tsx          # Provider singleton useChatPresence + useAgentCtx()
     │
     ├── hooks/
-    │   ├── useLanguage.ts        # Langue + RTL + traductions, localStorage 'nova-shop-lang'
-    │   ├── useTheme.ts           # Dark/light, localStorage 'nova-theme'
-    │   ├── useAuth.ts            # Supabase Auth (session, signIn, signOut)
-    │   ├── useCategories.ts      # SELECT categories WHERE is_active=true
-    │   ├── useProducts.ts        # SELECT products + category + images, avec filtres
-    │   ├── useProduct.ts         # SELECT produit unique par slug + images + vidéos
-    │   ├── useOrders.ts          # useCreateOrder, useOrders (admin), useOrderStats
-    │   ├── useChat.ts            # Machine d'état chat client (idle→form→connecting→active…)
-    │   ├── useChatMessages.ts    # Chargement + Realtime messages d'une conversation
-    │   └── useChatPresence.ts    # Présence admin (statut, heartbeat), useAdminConversations
+    │   ├── useLanguage.ts            # Langue, RTL, localStorage 'nova-shop-lang'
+    │   ├── useTheme.ts               # Dark/light, localStorage 'nova-theme'
+    │   ├── useAuth.ts                # Supabase Auth basique (session, signIn, signOut)
+    │   ├── useStaffAuth.ts           # Auth étendue : profil complet (first_name, last_name, avatar_url, role)
+    │   ├── useCategories.ts          # SELECT categories WHERE is_active=true
+    │   ├── useProducts.ts            # SELECT products + category + images, avec filtres
+    │   ├── useProduct.ts             # SELECT produit unique par slug + images + vidéos
+    │   ├── useOrders.ts              # useCreateOrder, useCreateOrderAdmin, useOrders (admin), useOrderStats
+    │   ├── useChat.ts                # Machine d'état widget chat client
+    │   ├── useChatMessages.ts        # Chargement + Realtime messages d'une conversation
+    │   ├── useChatPresence.ts        # Présence agent + liste conversations (Realtime)
+    │   ├── useNotifications.ts       # Son (Web Audio API) + Notification API navigateur
+    │   ├── useQuickReplies.ts        # Chargement réponses rapides CRC
+    │   ├── useSupervision.ts         # Agents dashboard + KPIs + Realtime agents/conversations
+    │   ├── useConversationHistory.ts # Historique paginé avec gestion des filtres
+    │   ├── useCustomers.ts           # Lot 5 : liste clients, search, updateNotes, upsertCustomer, findByPhone
+    │   ├── useEmailAccounts.ts       # Lot 6 : comptes Gmail, connectGmail (OAuth redirect), syncNow
+    │   └── useEmailMessages.ts       # Lot 6 : messages + Realtime INSERT/UPDATE, mark statuts
     │
     ├── lib/
-    │   ├── supabase.ts           # createClient(VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY)
-    │   ├── whatsapp.ts           # WHATSAPP_NUMBER hardcodé, buildWhatsAppUrl, getOrderMessage
-    │   ├── exportExcel.ts        # Export XLSX via librairie xlsx
-    │   └── chat.ts               # ensureAnonAuth, createConversation, sendMessage, claimConversation, RPCs…
+    │   ├── supabase.ts               # createClient singleton
+    │   ├── whatsapp.ts               # WHATSAPP_NUMBER hardcodé + utilitaires
+    │   ├── exportExcel.ts            # exportOrdersToExcel + exportConversationsToExcel
+    │   ├── chat.ts                   # ensureAnonAuth, createConversation, sendMessage, RPCs CRC
+    │   ├── supervision.ts            # loadAgentsDashboard, loadSupervisionKpis, loadConversationHistory
+    │   └── email.ts                  # Lot 6 : loadEmailAccounts, loadEmailMessages, getGmailAuthUrl, triggerEmailSync, sendEmail
     │
     ├── components/
     │   ├── layout/
-    │   │   ├── Header.tsx        # Navbar sticky, menu mobile, toggle langue, toggle dark mode
-    │   │   ├── Footer.tsx        # Liens, contact, copyright
-    │   │   └── Layout.tsx        # Wrapper Header + main + Footer + WhatsAppFloat
+    │   │   ├── Header.tsx            # Navbar + menu mobile + langue + dark mode
+    │   │   ├── Footer.tsx
+    │   │   └── Layout.tsx            # Header + main + Footer + WhatsAppFloat + ChatButton
     │   ├── products/
-    │   │   ├── ProductCard.tsx   # Carte produit (image, prix, badges, bouton commander)
-    │   │   └── ProductFiltersBar.tsx # Filtres sidebar (search, catégorie, prix, stock)
+    │   │   ├── ProductCard.tsx
+    │   │   └── ProductFiltersBar.tsx
     │   ├── orders/
-    │   │   ├── OrderModal.tsx    # Modal commande (prénom, nom, téléphone marocain)
-    │   │   └── OrderStatusBadge.tsx # Badge coloré selon statut
+    │   │   ├── OrderModal.tsx
+    │   │   └── OrderStatusBadge.tsx
     │   ├── whatsapp/
-    │   │   ├── WhatsAppButton.tsx # Bouton WhatsApp avec message optionnel
-    │   │   └── WhatsAppFloat.tsx  # Bouton flottant mobile (bottom-20 right-4, md:hidden)
+    │   │   ├── WhatsAppButton.tsx
+    │   │   └── WhatsAppFloat.tsx     # md:hidden
     │   └── chat/
-    │       ├── ChatButton.tsx     # Bouton flottant bleu + conteneur du widget
-    │       ├── ChatWidget.tsx     # Shell du widget (dimensions responsives, routing états)
-    │       ├── ChatHeader.tsx     # Barre bleue avec dot statut, minimize, close
-    │       ├── ChatCustomerForm.tsx # Formulaire prénom/nom/téléphone + validation
-    │       ├── ChatQueueStatus.tsx  # Spinner countdown (searching) ou position file (waiting)
-    │       ├── ChatClosedMessage.tsx # Écran fin de conversation (closed/timeout)
-    │       ├── ChatMessage.tsx    # Bulle message (customer droite, admin gauche, système centré)
-    │       ├── ChatInput.tsx      # Textarea auto-hauteur, Enter envoie, Shift+Enter newline
-    │       └── ChatWindow.tsx     # Conteneur messages + input, toujours sender_type='customer'
+    │       ├── ChatButton.tsx        # Bouton flottant bleu + conteneur widget
+    │       ├── ChatWidget.tsx
+    │       ├── ChatHeader.tsx
+    │       ├── ChatCustomerForm.tsx
+    │       ├── ChatQueueStatus.tsx
+    │       ├── ChatClosedMessage.tsx
+    │       ├── ChatMessage.tsx       # Gère aussi conversation_transferred
+    │       ├── ChatInput.tsx
+    │       ├── ChatWindow.tsx
+    │       └── admin/
+    │           ├── PauseModal.tsx        # Sélection motif de pause
+    │           ├── WrapUpModal.tsx       # Disposition + notes à la clôture
+    │           ├── QuickReplyPicker.tsx  # Overlay réponses rapides (déclenché par /)
+    │           ├── TransferModal.tsx     # Transfert vers un autre agent disponible
+    │           ├── ClientCard360.tsx     # Fiche client : historique conv + commandes par téléphone
+    │           └── AdminChatInput.tsx    # Input admin avec déclencheur réponses rapides
     │
     └── pages/
-        ├── Home/index.tsx         # Accueil: hero, nouveautés, populaires, catégories, CTA
-        ├── Products/index.tsx     # Liste produits + filtres sidebar
-        ├── ProductDetails/index.tsx # Détail produit, galerie images+vidéos, modal commande
-        ├── Categories/index.tsx   # Grille catégories
-        ├── Categories/CategoryPage.tsx # Produits d'une catégorie par slug
-        ├── Contact/index.tsx      # Page contact WhatsApp + option démarrer le chat
+        ├── Home/index.tsx
+        ├── Products/index.tsx
+        ├── ProductDetails/index.tsx
+        ├── Categories/index.tsx
+        ├── Categories/CategoryPage.tsx
+        ├── Contact/index.tsx
+        ├── SetPasswordPage.tsx           # Flux invitation (token sessionStorage → set-password)
         └── Admin/
-            ├── LoginPage.tsx      # Formulaire connexion Supabase Auth
-            ├── ProtectedRoute.tsx # Vérifie session active (useAuth)
-            ├── AdminLayout.tsx    # Sidebar admin + badge waitingCount chat
-            ├── DashboardPage.tsx  # Stats produits + stats commandes + dernières commandes
-            ├── ProductsPage.tsx   # Liste produits admin (toggle actif, suppression)
-            ├── ProductFormPage.tsx # Formulaire ajout/édition produit + upload images/vidéos
-            ├── CategoriesPage.tsx # CRUD catégories (modal inline)
-            ├── OrdersPage.tsx     # Gestion commandes (filtres, statuts, export Excel)
-            └── ChatPage.tsx       # Interface admin chat (statut agent, file, actif, historique)
+            ├── LoginPage.tsx
+            ├── ProtectedRoute.tsx        # requiredRole: 'agent' | 'admin'
+            ├── AdminLayout.tsx           # Sidebar avec statut agent en temps réel
+            ├── DashboardPage.tsx
+            ├── ProductsPage.tsx
+            ├── ProductFormPage.tsx
+            ├── CategoriesPage.tsx
+            ├── OrdersPage.tsx
+            ├── ChatPage.tsx              # Interface agent CRC complète
+            ├── CRCSettingsPage.tsx       # Paramètres CRC (admin)
+            ├── SupervisionPage.tsx       # KPIs temps réel (admin)
+            ├── HistoryPage.tsx           # Historique paginé (agent + admin)
+            ├── AccountPage.tsx           # Mon compte (profil, avatar, mot de passe)
+            ├── UsersPage.tsx             # Gestion utilisateurs (admin)
+            ├── CustomersPage.tsx         # Lot 5 : liste clients + modal détail + notes + commandes
+            ├── EmailPage.tsx             # Lot 6 : inbox Gmail + panel thread + réponse + archivage
+            └── EmailSettingsPage.tsx     # Lot 6 : connexion OAuth Gmail + liste comptes + sync
 ```
 
 ---
 
-## 6. Routing
+## 7. Routing
 
 **IMPORTANT : HashRouter, pas BrowserRouter.**
 
-```tsx
-// App.tsx
-<HashRouter>  // Utilise # dans l'URL : https://host/nova-shop/#/products
-```
-
-**Raison :** GitHub Pages sert des fichiers statiques. Sans HashRouter, un accès direct à `/products` retournerait une 404. Le `#` est traité côté client.
-
-Routes définies :
-| Path | Composant | Protégé |
+| Path | Composant | Rôle requis |
 |---|---|---|
-| `/` | HomePage | Non |
-| `/products` | ProductsPage | Non |
-| `/products/:slug` | ProductDetailsPage | Non |
-| `/categories` | CategoriesPage | Non |
-| `/categories/:slug` | CategoryPage | Non |
-| `/contact` | ContactPage | Non |
-| `/admin/login` | AdminLoginPage | Non |
-| `/admin` | AdminDashboard | Oui |
-| `/admin/products` | AdminProductsPage | Oui |
-| `/admin/products/new` | ProductFormPage | Oui |
-| `/admin/products/:id/edit` | ProductFormPage | Oui |
-| `/admin/categories` | AdminCategoriesPage | Oui |
-| `/admin/orders` | AdminOrdersPage | Oui |
-| `/admin/chat` | AdminChatPage | Oui |
+| `/` | HomePage | Public |
+| `/products` | ProductsPage | Public |
+| `/products/:slug` | ProductDetailsPage | Public |
+| `/categories` | CategoriesPage | Public |
+| `/categories/:slug` | CategoryPage | Public |
+| `/contact` | ContactPage | Public |
+| `/set-password` | SetPasswordPage | Public (flux invitation) |
+| `/admin/login` | AdminLoginPage | Public |
+| `/admin` | AdminDashboard | agent |
+| `/admin/chat` | AdminChatPage | agent |
+| `/admin/orders` | AdminOrdersPage | agent |
+| `/admin/history` | HistoryPage | agent |
+| `/admin/account` | AdminAccountPage | agent |
+| `/admin/products` | AdminProductsPage | admin |
+| `/admin/products/new` | ProductFormPage | admin |
+| `/admin/products/:id/edit` | ProductFormPage | admin |
+| `/admin/categories` | AdminCategoriesPage | admin |
+| `/admin/users` | AdminUsersPage | admin |
+| `/admin/supervision` | SupervisionPage | admin |
+| `/admin/crc-settings` | CRCSettingsPage | admin |
+| `/admin/customers` | CustomersPage | agent |
+| `/admin/email` | EmailPage | agent |
+| `/admin/email-settings` | EmailSettingsPage | admin |
 | `*` | Redirect `/` | — |
+
+**`ProtectedRoute`** accepte `requiredRole: 'agent' | 'admin'`. Vérifie la session ET le rôle via `useStaffAuth`. Si rôle insuffisant → redirect `/admin/login`.
 
 ---
 
-## 7. Variables d'Environnement
+## 8. Variables d'Environnement
 
-**Fichier `.env` réel (variables correctes) :**
 ```
 VITE_SUPABASE_URL=<valeur_secrète>
 VITE_SUPABASE_PUBLISHABLE_KEY=<valeur_secrète>
 ```
 
-**⚠ Point d'attention :** Le fichier `.env.example` contient des préfixes `NEXT_PUBLIC_` qui sont INCORRECTS pour ce projet Vite. Les vraies variables utilisées dans le code et le workflow GitHub Actions sont bien `VITE_SUPABASE_URL` et `VITE_SUPABASE_PUBLISHABLE_KEY`.
-
-**Règle absolue :** Ne jamais exposer les valeurs de ces variables. Ne jamais les committer. Ne jamais les afficher dans les logs.
-
-Les variables `VITE_` sont accessibles côté client (bundlées dans le build). Ce sont des clés publiques (anon key Supabase). La clé `service_role` ne doit JAMAIS être utilisée ici.
-
----
-
-## 8. Supabase
-
-### Initialisation
-
-**Fichier :** `src/lib/supabase.ts`
-
-```typescript
-import { createClient } from '@supabase/supabase-js'
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
-)
-```
-
-Le client est un singleton exporté, utilisé dans tous les hooks.
-
-### Tables utilisées
-
-| Table | Description |
-|---|---|
-| `categories` | Catégories de produits (FR + AR + slug) |
-| `products` | Produits (FR + AR + prix + flags + catégorie) |
-| `product_images` | Images associées aux produits (URL Supabase Storage) |
-| `product_videos` | Vidéos associées aux produits (URL Supabase Storage) |
-| `profiles` | Profils utilisateurs liés à `auth.users` (rôle admin/user) |
-| `orders` | Commandes clients |
-| `chat_conversations` | Conversations client ↔ admin (statut, file d'attente, agent assigné) |
-| `chat_messages` | Messages d'une conversation (customer / admin / system) |
-| `chat_agents` | Présence et statut des agents admin (offline / available / busy) |
-
-### Relations
-
-```
-categories (1) ──< products (N)
-products   (1) ──< product_images (N)
-products   (1) ──< product_videos (N)
-auth.users (1) ──  profiles (1)
-products   (1) ──< orders (N)
-auth.users (1) ──< chat_conversations (N)   [customer_user_id — auth anonyme]
-chat_conversations (1) ──< chat_messages (N)
-auth.users (1) ──  chat_agents (1)          [user_id — admin]
-```
-
-### Authentification anonyme (chat client)
-
-Les clients du chat s'authentifient via `supabase.auth.signInAnonymously()` avant de créer une conversation. Cette session anonyme est persistée dans `sessionStorage` (`nova-chat-session`) pour permettre la reprise de session.
-
-**Pourquoi :** La RLS de `chat_conversations` et `chat_messages` utilise `auth.uid()` pour isoler chaque client — un client ne peut jamais lire les conversations d'un autre.
-
-### Supabase Realtime
-
-Les 3 tables chat sont publiées dans la publication Realtime :
-```sql
-ALTER PUBLICATION supabase_realtime ADD TABLE chat_conversations;
-ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE chat_agents;
-```
-
-**Règle impérative sur les noms de canaux :** Chaque instance de hook doit utiliser un nom de canal **unique** (suffix `instanceId = Date.now() + random`). Réutiliser le même nom retourne le canal déjà souscrit → erreur "cannot add postgres_changes callbacks after subscribe()".
-
-Hooks concernés : `useChatPresence` (canal `agents-{id}`, `waiting-conv-{id}`), `useChatMessages` (canal `msgs-{convId}-{timestamp}`).
+**⚠ Règles absolues :**
+- Préfixe `VITE_` uniquement (jamais `NEXT_PUBLIC_`, `REACT_APP_`)
+- Ne jamais committer `.env`
+- Ne jamais utiliser la clé `service_role` côté frontend
+- Le fichier `.env.example` a des préfixes NEXT_PUBLIC_ incorrects — ne pas s'y fier
 
 ---
 
 ## 9. Database Schema
 
-### Table `categories`
+### Schémas des tables modifiées par les Lots 1–3
+
+#### `profiles` (étendue par `supabase-accounts.sql`)
 ```sql
-id         UUID PK DEFAULT gen_random_uuid()
-name_fr    TEXT NOT NULL
-name_ar    TEXT NOT NULL
-slug       TEXT UNIQUE NOT NULL
-image_url  TEXT (nullable)
-is_active  BOOLEAN DEFAULT true
-created_at TIMESTAMPTZ DEFAULT now()
-updated_at TIMESTAMPTZ DEFAULT now()
+id           UUID PK FK → auth.users ON DELETE CASCADE
+email        TEXT
+role         TEXT DEFAULT 'user' CHECK (role IN ('admin', 'agent', 'user'))
+first_name   TEXT
+last_name    TEXT
+avatar_url   TEXT
+created_at   TIMESTAMPTZ DEFAULT now()
+```
+**Rôles :** `admin` = accès complet | `agent` = chat + commandes + historique | `user` = ancien rôle inactif
+
+#### `chat_agents` (étendue par `supabase-crc.sql`)
+```sql
+id                        UUID PK
+user_id                   UUID UNIQUE FK → auth.users
+status                    TEXT CHECK (status IN ('offline','available','busy','pause'))  -- 'pause' ajouté Lot 2
+last_seen_at              TIMESTAMPTZ
+capacity                  INTEGER NOT NULL DEFAULT 3   -- Lot 2
+active_conversations_count INTEGER NOT NULL DEFAULT 0  -- Lot 2
+pause_reason_id           UUID FK → crc_pause_reasons  -- Lot 2
+status_changed_at         TIMESTAMPTZ                  -- Lot 2
+created_at / updated_at   TIMESTAMPTZ
 ```
 
-### Table `products`
+#### `chat_conversations` (étendue par `supabase-crc.sql`)
 ```sql
-id              UUID PK DEFAULT gen_random_uuid()
-slug            TEXT UNIQUE NOT NULL
-name_fr         TEXT NOT NULL
-name_ar         TEXT NOT NULL
-description_fr  TEXT DEFAULT ''
-description_ar  TEXT DEFAULT ''
-price           NUMERIC(10,2) NOT NULL
-old_price       NUMERIC(10,2) (nullable)
-category_id     UUID FK → categories(id) ON DELETE SET NULL
-is_active       BOOLEAN DEFAULT true
-is_featured     BOOLEAN DEFAULT false
-is_new          BOOLEAN DEFAULT false
-stock_available BOOLEAN DEFAULT true
-display_order   INTEGER DEFAULT 0
-created_at      TIMESTAMPTZ DEFAULT now()
-updated_at      TIMESTAMPTZ DEFAULT now()
-```
-
-### Table `product_images`
-```sql
-id            UUID PK DEFAULT gen_random_uuid()
-product_id    UUID FK → products(id) ON DELETE CASCADE
-image_url     TEXT NOT NULL
-display_order INTEGER DEFAULT 0
-created_at    TIMESTAMPTZ DEFAULT now()
-```
-
-### Table `product_videos`
-```sql
-id            UUID PK DEFAULT gen_random_uuid()
-product_id    UUID FK → products(id) ON DELETE CASCADE
-video_url     TEXT NOT NULL
-display_order INTEGER DEFAULT 0
-created_at    TIMESTAMPTZ DEFAULT now()
-```
-**⚠ Note :** Cette table est utilisée dans le code (`ProductFormPage`, `useProduct`) mais elle n'est PAS présente dans `supabase-setup.sql`. Elle doit être créée manuellement dans Supabase.
-
-### Table `profiles`
-```sql
-id         UUID PK FK → auth.users(id) ON DELETE CASCADE
-email      TEXT
-role       TEXT DEFAULT 'user' CHECK (role IN ('admin', 'user'))
-created_at TIMESTAMPTZ DEFAULT now()
-```
-
-### Table `orders`
-```sql
-id                  UUID PK DEFAULT gen_random_uuid()
-product_id          UUID FK → products(id) ON DELETE RESTRICT
-product_name        TEXT NOT NULL
-product_price       NUMERIC(10,2) NOT NULL
-customer_first_name TEXT NOT NULL
-customer_last_name  TEXT NOT NULL
-customer_phone      TEXT NOT NULL
-status              TEXT DEFAULT 'new' CHECK (status IN ('new','contacted','confirmed','cancelled','completed'))
-created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
-updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
-```
-
-Index sur `orders` : `product_id`, `status`, `created_at DESC`, `customer_phone`
-
-### Table `chat_conversations`
-```sql
-id                   UUID PK DEFAULT gen_random_uuid()
-customer_user_id     UUID FK → auth.users(id) ON DELETE CASCADE  -- session anonyme
+id                   UUID PK
+customer_user_id     UUID FK → auth.users (session anonyme)
 customer_first_name  TEXT NOT NULL
 customer_last_name   TEXT NOT NULL
 customer_phone       TEXT NOT NULL
-status               TEXT DEFAULT 'waiting' CHECK (status IN ('waiting','active','closed','timeout'))
-assigned_admin_id    UUID FK → auth.users(id) ON DELETE SET NULL (nullable)
-queue_position       INTEGER (nullable)
-last_message_at      TIMESTAMPTZ (nullable)
-created_at           TIMESTAMPTZ DEFAULT now()
-updated_at           TIMESTAMPTZ DEFAULT now()
+status               TEXT CHECK (status IN ('waiting','active','closed','timeout'))
+assigned_admin_id    UUID FK → auth.users
+queue_position       INTEGER
+last_message_at      TIMESTAMPTZ
+assigned_at          TIMESTAMPTZ   -- Lot 2
+closed_at            TIMESTAMPTZ   -- Lot 2
+closed_by            UUID FK → auth.users  -- Lot 2
+disposition_code_id  UUID FK → crc_disposition_codes  -- Lot 2
+wrap_up_seconds      INTEGER       -- Lot 2
+internal_notes       TEXT          -- Lot 2
+transferred_from_id  UUID FK → auth.users  -- Lot 2
+created_at / updated_at  TIMESTAMPTZ
 ```
 
-### Table `chat_messages`
+#### Tables CRC (créées par `supabase-crc.sql`)
+
+**`crc_settings`**
 ```sql
-id               UUID PK DEFAULT gen_random_uuid()
-conversation_id  UUID FK → chat_conversations(id) ON DELETE CASCADE
-sender_type      TEXT NOT NULL CHECK (sender_type IN ('customer','admin','system'))
-sender_id        UUID (nullable)  -- NULL pour system
-message          TEXT NOT NULL
+id          UUID PK
+key         TEXT UNIQUE NOT NULL
+value       JSONB NOT NULL
+description TEXT
+updated_at  TIMESTAMPTZ
+updated_by  UUID FK → auth.users
+```
+Clés par défaut : `max_conversations_per_agent`, `service_level_threshold_seconds` (30), `wrap_up_timeout_seconds`, `sound_notifications_enabled`, `browser_notifications_enabled`, etc.
+
+**`crc_pause_reasons`**
+```sql
+id, name_fr, name_ar, is_active, display_order, created_at
+```
+Données par défaut : Déjeuner, Formation, Administratif, Pause courte, Réunion d'équipe
+
+**`crc_disposition_codes`**
+```sql
+id, code, name_fr, name_ar, is_active, display_order, created_at
+```
+Données par défaut : RESOLVED, CALLBACK, ORDER, INFO, TRANSFERRED, SPAM, NO_RESPONSE
+
+**`crc_quick_replies`**
+```sql
+id, title_fr, title_ar, message_fr, message_ar, shortcut, is_active, display_order, created_at, created_by
+```
+
+#### `customers` (créée par `supabase-customers.sql` — Lot 5)
+```sql
+id          UUID PK DEFAULT gen_random_uuid()
+phone       TEXT UNIQUE NOT NULL
+first_name  TEXT NOT NULL
+last_name   TEXT NOT NULL
+email       TEXT
+notes       TEXT
+source      TEXT NOT NULL DEFAULT 'site' CHECK (source IN ('site','whatsapp','email','chat','phone'))
+created_at  TIMESTAMPTZ DEFAULT now()
+updated_at  TIMESTAMPTZ DEFAULT now()
+```
+
+#### `orders` (étendue par `supabase-orders-v2.sql` — Lot 5)
+Colonnes ajoutées :
+```sql
+customer_id       UUID FK → customers ON DELETE SET NULL   -- Lot 5
+channel           TEXT CHECK (channel IN ('site','whatsapp','email','chat','phone'))  -- Lot 5
+assigned_agent_id UUID FK → auth.users ON DELETE SET NULL  -- Lot 5
+notes             TEXT                                      -- Lot 5
+callback_at       TIMESTAMPTZ                               -- Lot 5
+```
+**Statuts (12) :** `new`, `assigned`, `contacted`, `unreachable`, `callback`, `confirmed`, `processing`, `shipped`, `delivered`, `returned`, `cancelled`, `on_hold`
+**Migration :** `completed` → `delivered` (run une seule fois dans `supabase-orders-v2.sql`)
+
+#### `email_accounts` (créée par `supabase-email.sql` — Lot 6)
+```sql
+id                  UUID PK
+label               TEXT NOT NULL
+gmail_address       TEXT UNIQUE NOT NULL
+vault_refresh_token UUID       -- référence vault.secrets.id (jamais exposé au frontend)
+token_expires_at    TIMESTAMPTZ
+is_active           BOOLEAN NOT NULL DEFAULT true
+last_sync_at        TIMESTAMPTZ
+created_at          TIMESTAMPTZ DEFAULT now()
+```
+
+#### `email_messages` (créée par `supabase-email.sql` — Lot 6)
+```sql
+id               UUID PK
+email_account_id UUID NOT NULL FK → email_accounts ON DELETE CASCADE
+gmail_message_id TEXT UNIQUE NOT NULL
+gmail_thread_id  TEXT NOT NULL
+subject          TEXT
+from_address     TEXT NOT NULL
+to_address       TEXT NOT NULL
+body_text        TEXT
+body_html        TEXT
+direction        TEXT NOT NULL CHECK (direction IN ('in','out'))
+status           TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','read','replied','archived'))
+customer_id      UUID FK → customers ON DELETE SET NULL
+order_id         UUID FK → orders ON DELETE SET NULL
+received_at      TIMESTAMPTZ NOT NULL
 created_at       TIMESTAMPTZ DEFAULT now()
 ```
 
-### Table `chat_agents`
+#### `email_sync_log` (créée par `supabase-email.sql` — Lot 6)
 ```sql
-id           UUID PK DEFAULT gen_random_uuid()
-user_id      UUID UNIQUE FK → auth.users(id) ON DELETE CASCADE
-status       TEXT DEFAULT 'offline' CHECK (status IN ('offline','available','busy'))
-last_seen_at TIMESTAMPTZ DEFAULT now()
-created_at   TIMESTAMPTZ DEFAULT now()
-updated_at   TIMESTAMPTZ DEFAULT now()
+id, email_account_id, synced_at, messages_fetched, error
 ```
+
+### Tables inchangées
+
+`categories`, `products`, `product_images`, `product_videos`, `chat_messages` — schémas identiques au départ.
+`orders` : colonnes de base inchangées, colonnes Lot 5 ajoutées par migration.
 
 ---
 
-## 10. Triggers et Fonctions SQL
+## 10. Fonctions SQL — Référence Complète
 
-### Triggers `updated_at`
-- `products_updated_at` → `update_updated_at()` → met à jour `updated_at` avant chaque UPDATE
-- `categories_updated_at` → idem
-- `orders_updated_at` → `update_orders_updated_at()` → idem
+### Fonctions helper (SECURITY DEFINER)
 
-### Trigger de création de profil
-- `on_auth_user_created` → `handle_new_user()` → crée un profil avec `role='user'` à chaque nouvel utilisateur Supabase Auth
-
-### Fonction helper `is_admin()`
 ```sql
-CREATE OR REPLACE FUNCTION is_admin()
-RETURNS BOOLEAN AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM profiles
-    WHERE id = auth.uid() AND role = 'admin'
-  );
-$$ LANGUAGE sql SECURITY DEFINER;
+is_admin()   → profiles.role = 'admin'
+is_staff()   → profiles.role IN ('admin', 'agent')   -- défini dans supabase-accounts.sql
 ```
-Utilisée dans toutes les policies RLS pour les opérations admin.
 
-### Triggers chat
-- `chat_conversations_updated_at` → `update_updated_at()` — met à jour `updated_at`
-- `chat_agents_updated_at` → `update_updated_at()` — idem
-- `chat_messages_update_conversation` → `update_conversation_last_message()` — met à jour `last_message_at` de la conversation à chaque INSERT dans `chat_messages`
-- `recalculate_queue_trigger` → `recalculate_queue_positions()` — recalcule les `queue_position` quand une conversation change de statut
+### Fonctions chat (supabase-chat.sql, mises à jour dans supabase-crc.sql)
 
-### Fonctions SQL chat (fichier `supabase-chat.sql`)
+| Fonction | Signature actuelle | Description |
+|---|---|---|
+| `ensure_chat_agent()` | () → void | Crée l'entrée chat_agents si absente |
+| `update_agent_heartbeat` | (TEXT, UUID) → void | Met à jour last_seen_at, status, pause_reason_id, status_changed_at |
+| `claim_conversation` | (UUID) → SETOF chat_conversations | FOR UPDATE SKIP LOCKED — vérifie capacité — incrémente active_conversations_count |
+| `close_conversation` | (UUID) → void | Passe en 'closed' — décrémente active_conversations_count |
+| `close_conversation_with_wrapup` | (UUID, UUID, TEXT, INT) → void | Clôture + disposition_code_id + internal_notes + wrap_up_seconds |
+| `transfer_conversation` | (UUID, UUID, TEXT) → void | Vérifie capacité cible — transfère — insère message système conversation_transferred |
+| `assign_to_available_admin` | (UUID) → BOOLEAN | Trouve l'agent le moins chargé avec capacité — assigne |
+| `timeout_conversation` | (UUID) → void | Passe en 'timeout' |
+| `check_agents_online` | () → TABLE(available_count, busy_count, has_capacity) | Agents actifs dans les 2 dernières minutes |
+| `get_client_360` | (TEXT) → JSON | Conv + commandes par numéro de téléphone |
+
+### Fonctions supervision (supabase-supervision.sql)
 
 | Fonction | Description |
 |---|---|
-| `ensure_chat_agent()` | Crée l'entrée `chat_agents` pour l'admin si elle n'existe pas |
-| `update_agent_heartbeat(p_status TEXT DEFAULT NULL)` | Met à jour `last_seen_at` (et `status` si fourni) de l'agent courant |
-| `claim_conversation(p_conversation_id UUID)` | Réserve atomiquement une conversation en attente via `FOR UPDATE SKIP LOCKED`, la passe en `active`, insère un message système `conversation_started`, retourne la conversation mise à jour |
-| `close_conversation(p_conversation_id UUID)` | Passe la conversation en `closed`, libère `queue_position` |
-| `assign_to_available_admin(p_conversation_id UUID)` | Cherche un agent `available` et lui assigne la conversation |
-| `timeout_conversation(p_conversation_id UUID)` | Passe la conversation en `timeout` |
-| `check_agents_online()` | Retourne `(available_count INT, busy_count INT)` — agents avec `last_seen_at` < 2 min |
+| `get_agents_dashboard()` | JSON array de tous les agents avec profil, pause_reason, seconds_in_status |
+| `get_supervision_kpis(p_period, p_date_from, p_date_to, p_agent_id)` | KPIs agrégés : total, taux de prise, DMA, DMT, niveau de service, dispositions |
+| `get_conversation_history(p_status, p_agent_id, p_disposition_id, p_date_from, p_date_to, p_phone, p_page, p_page_size)` | Historique paginé JSON avec jointures profiles + disposition |
+
+**Toutes les fonctions :** `SECURITY DEFINER SET search_path = public` + `GRANT EXECUTE TO authenticated`
+
+### Fonctions Lot 5 (supabase-orders-v2.sql, supabase-customers.sql)
+
+| Fonction | Signature | Description |
+|---|---|---|
+| `create_order_admin` | (p_product_id UUID, p_channel TEXT, p_first_name TEXT, p_last_name TEXT, p_phone TEXT, p_notes TEXT, p_callback_at TIMESTAMPTZ) → SETOF orders | SECURITY DEFINER — upsert customer (ON CONFLICT phone), insert order, retourne la commande créée. GRANT EXECUTE TO authenticated. |
+
+### Fonctions Lot 6 (supabase-email.sql)
+
+| Fonction | Signature | Description |
+|---|---|---|
+| `store_vault_secret` | (p_value TEXT, p_name TEXT) → UUID | SECURITY DEFINER — écrit dans vault.secrets. GRANT EXECUTE TO **service_role** uniquement. |
+| `read_vault_secret` | (p_id UUID) → TEXT | SECURITY DEFINER — lit vault.decrypted_secrets. GRANT EXECUTE TO **service_role** uniquement. |
+| `update_vault_secret` | (p_id UUID, p_new_value TEXT) → VOID | SECURITY DEFINER — met à jour vault.secrets. GRANT EXECUTE TO **service_role** uniquement. |
+| `match_customer_by_email_address` | (p_from_address TEXT) → UUID | Retourne l'ID customer si email connu. GRANT EXECUTE TO authenticated. |
+
+**Vue :** `email_messages_view` — jointure email_messages + email_accounts + customers. `GRANT SELECT TO authenticated`.
 
 ---
 
 ## 11. RLS (Row Level Security)
 
-Toutes les tables ont RLS activé.
+### Règle générale
 
-| Table | Accès public | Accès admin |
-|---|---|---|
-| `categories` | SELECT WHERE is_active=true | FULL (ALL) |
-| `products` | SELECT WHERE is_active=true | FULL (ALL) |
-| `product_images` | SELECT (toutes) | FULL (ALL) |
-| `orders` | INSERT (créer une commande) | FULL (ALL) |
-| `profiles` | SELECT (propre profil) | SELECT (tous) |
-| `chat_conversations` | SELECT/INSERT WHERE customer_user_id = auth.uid() | FULL (ALL) |
-| `chat_messages` | SELECT/INSERT WHERE conversation appartient à auth.uid() | FULL (ALL) |
-| `chat_agents` | — | FULL (ALL) |
+| Table | Visiteur anonyme | Agent (`is_staff()`) | Admin (`is_admin()`) |
+|---|---|---|---|
+| `categories` | SELECT (actives) | FULL | FULL |
+| `products` | SELECT (actifs) | FULL | FULL |
+| `product_images` | SELECT | FULL | FULL |
+| `orders` | INSERT | SELECT + UPDATE | FULL |
+| `profiles` | SELECT own | SELECT + UPDATE own | FULL |
+| `chat_conversations` | SELECT/INSERT WHERE customer_user_id = auth.uid() | FULL | FULL |
+| `chat_messages` | SELECT/INSERT sur ses conv | FULL | FULL |
+| `chat_agents` | — | SELECT + UPDATE own | FULL |
+| `crc_settings` | — | SELECT | FULL |
+| `crc_pause_reasons` | — | SELECT | FULL |
+| `crc_disposition_codes` | — | SELECT | FULL |
+| `crc_quick_replies` | — | SELECT | FULL |
+| `customers` | — | FULL | FULL |
+| `email_accounts` | — | SELECT | FULL |
+| `email_messages` | — | FULL | FULL |
+| `email_sync_log` | — | SELECT | SELECT |
 
-**Note :** La table `product_videos` doit avoir des policies RLS similaires à `product_images`.
+### Règles immuables (ne jamais violer)
 
-**Règle de sécurité chat :** Un client ne peut jamais lire les conversations d'un autre client. Le filtre RLS `customer_user_id = auth.uid()` sur `chat_conversations` et une sous-requête équivalente sur `chat_messages` garantissent l'isolation complète. Ne jamais créer de policy `WITH CHECK (true)` sans vérification sur ces tables.
+1. `chat_conversations` INSERT client : `WITH CHECK (customer_user_id = auth.uid())`
+2. `chat_conversations` SELECT client : `USING (customer_user_id = auth.uid())`
+3. `chat_messages` client : sous-requête vérifiant que la conversation appartient à `auth.uid()`
+4. Jamais de policy `WITH CHECK (true)` sur les tables chat pour le rôle anon
 
 ---
 
 ## 12. Supabase Storage
 
-### Buckets
-| Bucket | Usage | Visibilité |
+| Bucket | Contenu | Accès |
 |---|---|---|
-| `product-images` | Images des produits | Public |
-| `product-videos` | Vidéos des produits | Public |
+| `product-images` | Images produits | Public |
+| `product-videos` | Vidéos produits | Public |
+| `avatars` | Photos de profil staff | Lecture publique, upload/delete is_staff() + own path |
 
-### Flux upload (ProductFormPage)
-1. Admin sélectionne un fichier
-2. Upload vers `supabase.storage.from('product-images').upload(path, file)`
-3. Récupération URL : `supabase.storage.from('product-images').getPublicUrl(path)`
-4. URL stockée dans `product_images.image_url`
-
-**Path format :** `{productId}/{timestamp}-{index}.{ext}`
+**Path avatars :** `{userId}/{timestamp}.{ext}`
 
 ---
 
-## 13. Authentification
+## 13. Authentification & Autorisation
 
-**Méthode :** Supabase Auth, email + password uniquement.
+### Flux staff (admin + agent)
+```
+/admin/login → signInWithPassword() → session JWT
+→ useStaffAuth() → charge profil (first_name, last_name, avatar_url, role)
+→ ProtectedRoute(requiredRole) → vérifie role >= requiredRole
+```
 
-**Flux :**
-1. Admin navigue vers `/admin/login`
-2. Saisie email + password → `supabase.auth.signInWithPassword()`
-3. Session Supabase stockée dans localStorage/cookies par le client Supabase
-4. `ProtectedRoute` vérifie la session via `useAuth` → `supabase.auth.getSession()`
-5. Si pas de session → redirect `/admin/login`
+**`useStaffAuth`** (`src/hooks/useStaffAuth.ts`) :
+- Expose : `user`, `profile`, `isAdmin`, `loading`, `signIn()`, `signOut()`
+- `isAdmin` = `profile?.role === 'admin'`
 
-**Hook `useAuth`** (`src/hooks/useAuth.ts`) :
-- Écoute les changements de session via `supabase.auth.onAuthStateChange()`
-- Expose : `user`, `loading`, `signIn()`, `signOut()`
-
----
-
-## 14. Autorisation (Rôles)
-
-**⚠ Point d'attention :** `ProtectedRoute` vérifie uniquement la présence d'une session active (user connecté). Il ne vérifie PAS si l'utilisateur a le rôle `admin`. 
-
-Un utilisateur non-admin connecté via Supabase Auth pourrait théoriquement accéder aux pages `/admin/*`. La protection réelle est assurée côté base de données par les policies RLS (`is_admin()`).
-
-Pour un accès complet admin, l'utilisateur doit avoir `role = 'admin'` dans la table `profiles`.
-
-**Créer un admin :**
+**Promouvoir un agent en admin :**
 ```sql
-UPDATE profiles SET role = 'admin' WHERE email = 'admin@example.com';
+UPDATE profiles SET role = 'admin' WHERE email = 'agent@example.com';
+```
+
+**Inviter un agent :**
+Via `/admin/users` → appelle la Supabase Edge Function `invite-user` → email avec lien `/set-password`.
+
+### Flux client (chat)
+```
+ensureAnonAuth() → signInAnonymously() → session stockée dans sessionStorage 'nova-chat-session'
+→ createConversation() → RLS filtre sur customer_user_id = auth.uid()
+```
+Session perdue à la fermeture de l'onglet — comportement voulu.
+
+---
+
+## 14. Flux de Données Principaux
+
+### Flux chat admin CRC (ChatPage)
+```
+Agent → /admin/chat → useAgentCtx() [via AgentProvider singleton]
+      → setStatus('available') → update_agent_heartbeat + heartbeat 20s
+      → 3 onglets : File d'attente | Mes actives | (historique retiré → HistoryPage)
+      → [prendre] → claimConversation() → RPC claim_conversation (FOR UPDATE SKIP LOCKED)
+      → [pause] → PauseModal → setStatus('pause', reasonId)
+      → [réponse rapide] → taper '/' → QuickReplyPicker → sélection → texte inséré
+      → [transférer] → TransferModal → transfer_conversation() → message système
+      → [terminer] → WrapUpModal → close_conversation_with_wrapup()
+      → [fiche 360°] → ClientCard360 → get_client_360(phone)
+```
+
+### Flux supervision
+```
+Admin → /admin/supervision → useSupervision()
+      → get_agents_dashboard() + get_supervision_kpis(period, filters)
+      → Realtime : re-fetch sur tout changement chat_agents ou chat_conversations
+      → Filtres période + agent → bouton Appliquer → nouvelles requêtes
+```
+
+### Flux historique
+```
+Agent/Admin → /admin/history → useConversationHistory()
+           → get_conversation_history(filters, page)
+           → Bouton Voir messages → MessagesModal → useChatMessages(conv.id)
+           → Export → exportConversationsToExcel()
 ```
 
 ---
 
-## 15. Flux de Données Principaux
+## 15. Module Chat — Référence Rapide
 
-### Flux visiteur → produits
-```
-Browser → React → useProducts() → supabase.from('products').select()
-       → PostgreSQL RLS (is_active=true) → Données → UI
-```
-
-### Flux commande client
-```
-Client → ProductCard/ProductDetailsPage → OrderModal
-       → useCreateOrder() → supabase.from('orders').insert()
-       → PostgreSQL (RLS: Public INSERT) → Commande créée
-       → Admin reçoit notification (dashboard)
-```
-
-### Flux upload image admin
-```
-Admin → ProductFormPage → input[type=file]
-      → supabase.storage.from('product-images').upload()
-      → getPublicUrl() → URL publique
-      → supabase.from('product_images').insert({ image_url })
-```
-
-### Flux WhatsApp
-```
-Client → WhatsAppButton.onClick()
-       → getOrderMessage(productName, lang)
-       → window.open('https://wa.me/212606732531?text=...')
-       → Application WhatsApp
-```
-
-### Flux chat client (widget)
-```
-Client → ChatButton → openWidget() → widgetState: 'form'
-       → saisie prénom/nom/téléphone → startChat()
-           → ensureAnonAuth() [signInAnonymously si pas de session]
-           → createConversation() → INSERT chat_conversations
-           → assignToAvailableAdmin() → RPC assign_to_available_admin
-               [admin dispo] → widgetState: 'active' → ChatWindow
-               [admins occupés] → widgetState: 'waiting' → file d'attente
-               [aucun admin] → widgetState: 'searching' → countdown 30s
-                   [admin se connecte] → agent watch channel → assign → 'active'
-                   [timeout] → timeoutConversation() → widgetState: 'timeout'
-       → [actif] send() → INSERT chat_messages (sender_type='customer')
-       → [fermer] → widgetState: 'closed'
-```
-
-### Flux chat admin (ChatPage)
-```
-Admin → /admin/chat → AdminChatPage
-      → useChatPresence(adminId) → ensureChatAgent() → canal Realtime agents
-      → setStatus('available') → updateAgentHeartbeat + heartbeat toutes 20s
-      → tabs: file d'attente | actif | historique
-      → [prendre conversation] → claimConversation() → RPC claim_conversation
-          [FOR UPDATE SKIP LOCKED — protection race condition]
-          → conversation passe 'active' + message système 'conversation_started'
-      → useChatMessages(selectedConv.id) → load + canal Realtime messages
-      → send(text, 'admin', user.id) → INSERT chat_messages (sender_type='admin')
-      → [terminer] → closeConversation() → RPC close_conversation → 'closed'
-```
-
----
-
-## 16. WhatsApp
-
-**Fichier :** `src/lib/whatsapp.ts`
-
-- Numéro : `212606732531` (hardcodé)
-- Messages bilingues FR/AR selon la langue active
-- `WhatsAppButton` : bouton cliquable avec message personnalisé
-- `WhatsAppFloat` : bulle flottante visible uniquement sur mobile (`md:hidden`)
-- Lien format : `https://wa.me/212606732531?text=<encoded>`
-
-**Pour changer le numéro :** Modifier uniquement `WHATSAPP_NUMBER` dans `src/lib/whatsapp.ts`.
-
----
-
-## 17. Internationalisation (i18n)
-
-**Fichier :** `src/i18n/translations.ts`
-
-- 2 langues : `fr` (défaut) et `ar`
-- Toutes les chaînes dans un seul objet `const translations`
-- Clés hiérarchiques : `nav.home`, `product.price`, `order.submit`, etc.
-- Stockage langue : localStorage, clé `nova-shop-lang`
-- Hook `useLanguage()` expose : `lang`, `setLang()`, `t()`, `isRTL`, `dir`
-- Contexte `LanguageContext` + hook `useI18n()` dans tous les composants
-
----
-
-## 18. RTL (Right-to-Left)
-
-**Implémentation :**
-
-```typescript
-// useLanguage.ts
-useEffect(() => {
-  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'
-  document.documentElement.lang = lang
-}, [lang])
-```
-
-```css
-/* index.css */
-[dir="rtl"] {
-  font-family: 'Cairo', 'Noto Sans Arabic', sans-serif;
-}
-```
-
-- La police **Cairo** est chargée via Google Fonts pour l'arabe
-- Certains composants appliquent `flex-row-reverse` ou `rotate-180` en RTL
-- Le formulaire commande `OrderModal` utilise `dir={isRTL ? 'rtl' : 'ltr'}`
-- Les champs arabe dans `ProductFormPage` ont `dir="rtl"` explicite
-
----
-
-## 19. Dark Mode
-
-**Implémentation :** Classe `dark` sur `<html>`, pattern Tailwind `darkMode: 'class'`
-
-**Anti-flash script dans `index.html` :**
-```javascript
-var t = localStorage.getItem('nova-theme');
-if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-  document.documentElement.classList.add('dark');
-}
-```
-Ce script s'exécute avant React pour éviter le flash de thème.
-
-**Stockage :** localStorage, clé `nova-theme` (valeurs: `'dark'` | `'light'`)
-
-**Hook `useTheme()`** : gère l'état, applique la classe, écoute les préférences système
-
-**Couleurs custom dark :**
-```js
-dark: { bg: '#0F1115', surface: '#171A21', card: '#1E222B', border: '#252B38' }
-```
-
----
-
-## 20. Responsive Design
-
-- Tailwind CSS breakpoints : `sm` (640px), `md` (768px), `lg` (1024px), `xl` (1280px)
-- Grilles produits : `grid-cols-2 md:grid-cols-4`
-- Sidebar admin : cachée sur mobile, visible sur `md:flex`
-- Menu mobile : hamburger avec overlay
-- `WhatsAppFloat` : visible uniquement sur mobile (`md:hidden`)
-- Modal commande : bottom sheet sur mobile, centré sur desktop
-
----
-
-## 21. GitHub Actions / Pages
-
-**Fichier :** `.github/workflows/deploy.yml`
-
-**Déclenchement :** Push sur `main` ou `workflow_dispatch`
-
-**Pipeline :**
-1. Checkout code (actions/checkout@v7)
-2. Setup Node.js 24 (actions/setup-node@v7 avec cache npm)
-3. `npm ci`
-4. `npm run build` avec secrets `VITE_SUPABASE_URL` et `VITE_SUPABASE_PUBLISHABLE_KEY`
-5. actions/configure-pages@v6
-6. Upload artifact `./dist` (actions/upload-pages-artifact@v5)
-7. Deploy sur GitHub Pages (actions/deploy-pages@v5)
-
-**URL de déploiement :** `https://<USERNAME>.github.io/nova-shop/`
-
-**Permissions requises :** `contents: read`, `pages: write`, `id-token: write`
-
-**Secrets à configurer dans GitHub :**
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_PUBLISHABLE_KEY`
-
----
-
-## 22. Commandes
-
-```bash
-npm install          # Installer les dépendances
-npm run dev          # Démarrer le serveur de développement (localhost:5173)
-npm run build        # Compiler TypeScript + builder Vite → dist/
-npm run preview      # Prévisualiser le build local
-npm run lint         # Lancer ESLint
-```
-
----
-
-## 23. Conventions de Code Observées
-
-- **Composants** : fonctions nommées exportées (pas de default export sauf `App`)
-- **Hooks** : préfixe `use`, retournent un objet
-- **Types** : centralisés dans `src/types/index.ts`
-- **Imports** : chemins relatifs, pas d'alias `@/`
-- **Traductions** : toujours via `t('clé.sous-clé')` — pas de strings hardcodées dans l'UI (sauf quelques exceptions dans les pages Admin)
-- **Tailwind** : classes utilitaires directement dans JSX, pas de classes CSS custom sauf exceptions dans `index.css`
-- **Dark mode** : pattern `bg-white dark:bg-dark-card` systématique
-- **Supabase queries** : dans les hooks, pas directement dans les composants
-- **Gestion d'erreurs** : `setError(err.message)` + affichage dans l'UI
-- **Cleanup** : pattern `let cancelled = false` dans les hooks avec useEffect pour éviter les mises à jour sur composant démonté
-
----
-
-## 24. Contraintes Critiques à Respecter
-
-1. **HashRouter obligatoire** — Ne JAMAIS remplacer par BrowserRouter (casse GitHub Pages)
-2. **base: '/nova-shop/'** dans `vite.config.ts` — Ne JAMAIS modifier sans changer aussi la config GitHub Pages
-3. **Préfixe VITE_** pour les variables d'environnement — Ne JAMAIS utiliser `NEXT_PUBLIC_`, `REACT_APP_` ou autre
-4. **Supabase anon key uniquement** — Ne JAMAIS utiliser `service_role` key dans le frontend
-5. **RTL préservé** — Tout changement UI doit tester FR et AR
-6. **Dark mode préservé** — Chaque nouveau composant doit avoir ses variantes `dark:`
-7. **Pas de build cassé** — Toujours vérifier `npm run build` après modifications importantes
-8. **Noms de canaux Realtime uniques** — Chaque instance de hook qui souscrit à Supabase Realtime DOIT utiliser un nom de canal unique (suffixe `instanceId` généré à la création du hook). Ne jamais réutiliser un nom statique partagé entre plusieurs instances du même hook.
-9. **Isolation RLS chat** — Ne jamais accorder SELECT global sur `chat_conversations` ou `chat_messages` à l'anon role. La policy doit toujours filtrer sur `customer_user_id = auth.uid()`.
-
----
-
-## 25. Points d'Attention / Problèmes Connus
-
-1. **`.env.example` incorrect** : Contient `NEXT_PUBLIC_SUPABASE_URL` au lieu de `VITE_SUPABASE_URL`. À corriger.
-
-2. **`product_videos` absent de `supabase-setup.sql`** : La table est utilisée dans `useProduct.ts` et `ProductFormPage.tsx` mais le script SQL de setup ne la crée pas. Elle doit être créée manuellement.
-
-3. **`ProtectedRoute` ne vérifie pas le rôle admin** : Vérifie seulement la session, pas `role = 'admin'`. Un utilisateur non-admin connecté peut accéder au dashboard. Protection réelle = RLS côté Supabase.
-
-4. **`react-helmet-async` non utilisé** : Présent dans `package.json` mais aucun import trouvé dans le code source. Dépendance morte potentielle.
-
-5. **Numéro WhatsApp hardcodé** : `212606732531` dans `src/lib/whatsapp.ts`. Pas de variable d'environnement.
-
-6. **Pas de validation côté serveur** pour les ordres (hors phone marocain validé côté client). La RLS empêche les abus mais n'effectue pas de validation des données.
-
-7. **Copyright footer** : `© 2024 NOVA SHOP` — date statique dans les traductions.
-
-8. **`supabase-chat.sql` doit être exécuté manuellement** dans Supabase SQL Editor. La table `product_videos` (même problème) n'est pas dans `supabase-setup.sql`.
-
-9. **Heartbeat admin** : si l'onglet est fermé sans clic sur "Hors ligne", l'agent reste `available` en base jusqu'à expiration (`last_seen_at` > 2 min). `check_agents_online()` filtre sur cette fenêtre de 2 min.
-
-10. **Session chat client** dans `sessionStorage` (clé `nova-chat-session`) — perdue à la fermeture de l'onglet. C'est voulu : une nouvelle session = un nouvel utilisateur anonyme.
-
----
-
-## 26. Améliorations Futures Possibles
-
-- Ajouter `product_videos` dans `supabase-setup.sql`
-- Corriger `.env.example` (VITE_ au lieu de NEXT_PUBLIC_)
-- Renforcer `ProtectedRoute` pour vérifier le rôle admin
-- Mettre le numéro WhatsApp en variable d'environnement
-- Supprimer `react-helmet-async` si non utilisé ou l'utiliser pour le SEO
-- Ajouter des meta OG dynamiques par page produit
-- Pagination côté serveur pour les produits
-- Notifications sonores/visuelles (badge onglet) pour nouvelles conversations en attente
-- Transfert de conversation entre agents admin
-- Historique de chat côté client après fermeture et réouverture
-- Pièces jointes dans le chat (images produit depuis le catalogue)
-- Évaluation de la conversation (satisfaction client) à la fermeture
-
----
-
-## 27. Module Chat — Référence Rapide
-
-### États du widget client (`ChatWidgetState`)
-
+### États widget client (`ChatWidgetState`)
 ```
 idle → form → connecting → active
-                         → searching → active (agent trouvé)
+                         → searching → active (agent trouvé dans 30s)
                                      → timeout (30s dépassé)
-                         → waiting   → active (admin prend la conv)
-active → closed
-       → timeout
+                         → waiting   → active (agent prend la conv)
+active → closed | timeout
 ```
 
-### États agent admin (`ChatAgentStatus`)
-`offline` | `available` | `busy`
+### États agent (`ChatAgentStatus`)
+`offline` | `available` | `busy` | `pause`
 
-### Machine d'état `useChat.ts`
+### Messages système reconnus (ChatMessage.tsx)
+- `conversation_started` → t('chat.system_started')
+- `conversation_closed` → t('chat.system_closed')
+- `conversation_transferred` → t('chat.system_transferred')
+- `conversation_transferred:NOTE` → t('chat.system_transferred') + note
 
-| Transition | Déclencheur |
-|---|---|
-| `idle → form` | `openWidget()` |
-| `form → connecting` | `startChat(formData)` |
-| `connecting → active` | `assignToAvailableAdmin()` retourne true |
-| `connecting → searching` | aucun admin en ligne → countdown 30s |
-| `connecting → waiting` | admins en ligne mais tous occupés |
-| `searching → active` | agent se connecte pendant countdown |
-| `searching → timeout` | countdown atteint 0 |
-| `waiting → active` | subscription UPDATE on conv → status='active' |
-| `active → closed` | subscription UPDATE on conv → status='closed' |
-| `* → idle` | `resetToIdle()` |
-
-### Pattern cleanup Realtime (à reproduire dans tout nouveau hook)
-
+### Pattern Realtime obligatoire (à reproduire dans tout nouveau hook)
 ```typescript
 const instanceId = useRef(`${Date.now()}-${Math.random().toString(36).slice(2,7)}`)
 
 useEffect(() => {
-  let cancelled = false
   const channel = supabase
-    .channel(`nom-${instanceId.current}`)  // nom unique par instance
+    .channel(`nom-${instanceId.current}`)   // NOM UNIQUE PAR INSTANCE — règle absolue
     .on('postgres_changes', { ... }, handler)
     .subscribe()
   channelRef.current = channel
-
   return () => {
-    cancelled = true
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current)
       channelRef.current = null
@@ -815,142 +634,258 @@ useEffect(() => {
 }, [dep])
 ```
 
-### Sécurité RLS chat — règles immuables
-
-1. `chat_conversations` INSERT : `WITH CHECK (customer_user_id = auth.uid())`
-2. `chat_conversations` SELECT client : `USING (customer_user_id = auth.uid())`
-3. `chat_messages` SELECT/INSERT client : sous-requête vérifiant que la conversation appartient à `auth.uid()`
-4. `chat_agents` : réservé aux admins uniquement (`is_admin()`)
-
-### Traductions chat (`src/i18n/translations.ts`)
-
-Toutes les clés chat sont sous le préfixe `chat.*` (environ 40 clés, FR + AR). Exemples :
-`chat.btn_label`, `chat.form_title`, `chat.searching`, `chat.waiting`, `chat.admin_title`, `chat.admin_take`, `chat.admin_end`, etc.
+### AgentProvider — pattern singleton
+`useChatPresence` est instancié **une seule fois** dans `AgentProvider` (App.tsx). Tous les composants admin utilisent `useAgentCtx()`. Ne jamais appeler `useChatPresence` directement dans un composant de page.
 
 ---
 
-## 29. Règles pour Claude Code
+## 16. Module CRC — Référence Rapide
+
+### Composants admin (`src/components/chat/admin/`)
+
+| Composant | Déclencheur | Description |
+|---|---|---|
+| `PauseModal` | Clic "En pause" | Liste les crc_pause_reasons actives, confirme avec motif |
+| `WrapUpModal` | Après fermeture conv | Sélectionne disposition + notes + affiche durée |
+| `QuickReplyPicker` | Touche `/` dans input | Overlay filtrable, navigation clavier ↑↓ Enter Esc |
+| `TransferModal` | Bouton Transférer | Filtre agents avec capacité, note de transfert |
+| `ClientCard360` | Panneau droit (conv active) | Appelle get_client_360(phone), affiche conv + commandes |
+| `AdminChatInput` | Zone saisie admin | Bouton Zap + détection token / → ouvre QuickReplyPicker |
+
+### Paramètres CRC (`/admin/crc-settings`)
+4 onglets : Motifs de pause | Codes de disposition | Réponses rapides | Général
+- Général lit/écrit dans `crc_settings` (clés connues : max_conversations_per_agent, wrap_up_timeout_seconds, sound_notifications_enabled, browser_notifications_enabled, service_level_threshold_seconds)
+
+---
+
+## 17. Module Supervision — Référence Rapide
+
+### KPIs calculés par `get_supervision_kpis`
+- `total_received` — toutes les conversations créées dans la période
+- `total_taken` — conversations avec assigned_admin_id non null
+- `total_closed` / `total_timeout` / `total_waiting`
+- `take_rate_pct` — total_taken / total_received × 100
+- `avg_wait_seconds` — DMA : moyenne(assigned_at - created_at)
+- `avg_handle_seconds` — DMT : moyenne(closed_at - assigned_at)
+- `service_level_pct` — % conversations prises en < service_level_threshold_seconds
+- `service_level_threshold` — lu depuis crc_settings (défaut : 30s)
+- `dispositions` — répartition par code de qualification, triée par volume DESC
+
+### Hook `useSupervision`
+- Appelle `loadAgentsDashboard()` + `loadSupervisionKpis()` en parallèle
+- Souscrit Realtime sur `chat_agents` (ANY) et `chat_conversations` (INSERT+UPDATE)
+- Re-fetch complet à chaque événement Realtime
+
+---
+
+## 18. Internationalisation (i18n)
+
+**Fichier :** `src/i18n/translations.ts` — objet `const translations` avec clés FR et AR.
+
+**Sections existantes :**
+```
+nav.*           → Navigation
+hero.*          → Section héro
+sections.*      → Sections accueil
+product.*       → Labels produit
+filters.*       → Filtres produits
+admin.*         → Labels interface admin (inclut supervision, history, crc_settings, customers, emails, email_settings)
+account.*       → Mon compte
+users.*         → Gestion utilisateurs
+set_password.*  → Définition mot de passe (invitation)
+forms.*         → Formulaires produits/catégories
+contact.*       → Page contact
+footer.*        → Pied de page
+common.*        → Messages génériques (loading, error…)
+chat.*          → Widget client + interface agent CRC (≈ 70 clés)
+crc.*           → Paramètres CRC (≈ 20 clés)
+supervision.*   → Page supervision (≈ 30 clés)
+history.*       → Historique conversations (≈ 25 clés)
+order.*         → Commandes + saisie admin + 12 statuts + 5 canaux (≈ 55 clés)
+customers.*     → Page clients (≈ 20 clés)
+email.*         → Inbox Gmail + email settings OAuth (≈ 35 clés)
+```
+
+**⚠ Clé `admin.email` existe déjà** (libellé champ email du formulaire login). La clé pour la nav email inbox est `admin.emails` (avec 's'). Ne pas créer de doublon.
+
+**Règle :** toujours ajouter les clés FR ET AR simultanément. Jamais de string hardcodée dans l'UI.
+
+---
+
+## 19. RTL (Right-to-Left)
+
+Activation automatique quand `lang === 'ar'` :
+```typescript
+document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'
+```
+Police arabe : **Cairo** (Google Fonts), appliquée via `[dir="rtl"]` dans `index.css`.
+
+---
+
+## 20. Dark Mode
+
+Classe `dark` sur `<html>`. Script anti-flash dans `index.html` (s'exécute avant React).
+Stockage : `localStorage['nova-theme']` = `'dark'` | `'light'`
+
+Couleurs custom :
+```js
+dark: { bg: '#0F1115', surface: '#171A21', card: '#1E222B', border: '#252B38' }
+```
+
+**Règle :** chaque nouveau composant doit avoir ses variantes `dark:`.
+
+---
+
+## 21. GitHub Actions / Pages
+
+**Déclenchement :** Push sur `main` ou `workflow_dispatch`
+
+**Pipeline :** checkout → Node 24 + cache npm → `npm ci` → `npm run build` (avec secrets) → upload artifact → deploy Pages
+
+**Secrets GitHub requis :** `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`
+
+**Workflow deploy :** `Ctrl+K` commit dans WebStorm → `Ctrl+Shift+K` push → GitHub Actions se déclenche → 2–3 min → production mise à jour.
+
+---
+
+## 22. Commandes
+
+```bash
+npm run dev       # Dev server → http://localhost:5173/nova-shop/
+npm run build     # TypeScript + Vite → dist/   (vérifier après toute modif importante)
+npm run preview   # Preview build local
+npm run lint      # ESLint flat config v9
+```
+
+---
+
+## 23. Conventions de Code
+
+- **Composants** : fonctions nommées exportées (pas de default export sauf `App`)
+- **Hooks** : préfixe `use`, retournent un objet
+- **Types** : `src/types/index.ts` (e-commerce) et `src/types/chat.ts` (chat + CRC + supervision)
+- **Imports** : chemins relatifs, pas d'alias `@/`
+- **Traductions** : toujours `t('section.clé')` — jamais de string hardcodée
+- **Tailwind** : classes dans JSX, pas de CSS custom (sauf `index.css`)
+- **Supabase queries** : dans les hooks ou lib/, jamais directement dans les composants
+- **Gestion d'erreurs** : `setError(err.message)` + affichage dans l'UI
+- **Cleanup hooks Realtime** : pattern `instanceId` + `removeChannel` dans le return du useEffect
+
+---
+
+## 24. Contraintes Critiques — RÈGLES ABSOLUES
+
+1. **HashRouter obligatoire** — jamais BrowserRouter (casse GitHub Pages)
+2. **`base: '/nova-shop/'`** dans `vite.config.ts` — ne jamais modifier
+3. **Préfixe `VITE_`** pour les variables d'env — jamais `NEXT_PUBLIC_` ou autre
+4. **Supabase anon key uniquement** côté frontend — jamais `service_role`
+5. **RTL préservé** — chaque changement UI doit fonctionner en FR et AR
+6. **Dark mode préservé** — variantes `dark:` obligatoires sur tout nouveau composant
+7. **Build propre** — vérifier `npm run build` après toute modification importante
+8. **Noms de canaux Realtime uniques** — suffixe `instanceId` obligatoire — jamais de nom statique partagé
+9. **Isolation RLS chat** — jamais de SELECT global anon sur `chat_conversations` ou `chat_messages`
+10. **DROP avant CREATE OR REPLACE** si la signature ou le type de retour d'une fonction SQL change
+11. **AgentProvider singleton** — ne jamais instancier `useChatPresence` directement dans une page admin
+12. **SECURITY DEFINER + SET search_path = public** sur toute nouvelle fonction SQL
+13. **Ne pas introduire de nouveau framework** sans demande explicite
+
+---
+
+## 25. Points d'Attention / Problèmes Connus
+
+1. **`.env.example` incorrect** : préfixes `NEXT_PUBLIC_` au lieu de `VITE_`. Ne pas s'y fier.
+
+2. **`product_videos` absent de `supabase-setup.sql`** : la table existe en base (créée manuellement) mais n'est pas dans le script de setup.
+
+3. **`react-helmet-async` non utilisé** : présent dans `package.json`, aucun import dans le code.
+
+4. **Numéro WhatsApp hardcodé** : `212606732531` dans `src/lib/whatsapp.ts`.
+
+5. **Copyright statique** : `© 2024 NOVA SHOP` dans les traductions footer.
+
+6. **Heartbeat admin** : si l'onglet est fermé sans clic "Hors ligne", le statut reste actif 2 min en base (fenêtre heartbeat de `check_agents_online`).
+
+7. **GRANTs fonctions CRC** : `supabase-crc.sql` drop/recrée des fonctions sans re-déclarer les GRANTs explicitement. Si erreur "permission denied" sur les RPCs CRC, exécuter les GRANTs manuellement (voir section 5, note après le tableau).
+
+8. **Bundle size** : ~987 kB minifié (après Lots 5-6). Pas de code-splitting configuré. Warning Vite normal, ne pas s'en préoccuper sauf si besoin de perf.
+
+9. **Historique dans ChatPage supprimé** : l'onglet "Historique" qui était dans ChatPage a été remplacé par la page `/admin/history`. Ne pas tenter de le réintroduire dans ChatPage.
+
+10. **Canal email — activation OAuth nécessaire** : la page `/admin/email-settings` ne peut fonctionner qu'après déploiement des Edge Functions gmail-* et configuration des secrets (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SITE_URL`) dans Supabase Dashboard.
+
+11. **Vault obligatoire** : l'extension `supabase_vault` doit être activée avant d'exécuter `supabase-email.sql`. Vérifier dans **Database → Extensions**.
+
+12. **migrate-customers.sql** : à exécuter une seule fois après `supabase-orders-v2.sql`. Si ré-exécuté, les INSERT sont idempotents (ON CONFLICT DO NOTHING) mais les UPDATE orders.customer_id sont répétés sans danger.
+
+13. **Clé `admin.email` dupliquée** : la clé `admin.email` existait déjà (champ email du formulaire de connexion). La clé pour la nav inbox email est `admin.emails` (avec 's'). Ne pas confondre.
+
+---
+
+## 26. Améliorations Futures Possibles
+
+- Corriger `.env.example` (VITE_ au lieu de NEXT_PUBLIC_)
+- Ajouter `product_videos` dans `supabase-setup.sql`
+- Mettre le numéro WhatsApp en variable d'environnement (`VITE_WHATSAPP_NUMBER`)
+- Supprimer ou utiliser `react-helmet-async` (meta OG dynamiques par produit)
+- Pagination côté serveur pour les produits
+- Gestion de stock quantitatif
+- Évaluation client (CSAT) à la fermeture de conversation
+- Pièces jointes dans le chat (images depuis le catalogue)
+- Graphiques historiques sur la page Supervision (courbe volume/jour)
+- Code-splitting (dynamic import) pour réduire le bundle
+- Filtres agents dans HistoryPage (recherche par nom)
+- Synchronisation email automatique via pg_cron (toutes les 5 min)
+- Attachements email dans la vue thread
+- Liaison automatique email → commande (détection numéro commande dans le sujet)
+- Notifications push navigateur pour les nouveaux emails entrants
+
+---
+
+## 27. Règles pour Claude Code
 
 **Avant toute modification :**
-1. Toujours relire le fichier concerné avec Read avant de l'éditer
-2. Vérifier les imports existants avant d'en ajouter
-3. Comprendre les dépendances entre composants/hooks avant de refactorer
+1. Lire ce fichier CLAUDE.md en entier
+2. Lire le fichier cible avec Read avant de l'éditer
+3. Vérifier les imports existants avant d'en ajouter
+4. Vérifier qu'une fonction SQL n'a pas changé de signature avant de la DROP
 
 **Règles absolues :**
-- Ne PAS remplacer HashRouter par BrowserRouter
-- Ne PAS changer le `base` dans `vite.config.ts` sans coordination
-- Ne PAS exposer les valeurs des secrets/clés dans les fichiers
-- Ne PAS introduire de nouveau framework ou bibliothèque sans demande explicite
-- Ne PAS remplacer Supabase par une autre solution sans demande explicite
-- Ne PAS casser la bidirectionnalité FR/AR
-- Ne PAS supprimer les classes `dark:` Tailwind existantes
-- Ne PAS utiliser `NEXT_PUBLIC_` comme préfixe de variables d'environnement
-- Ne PAS committer `.env` ou valeurs de secrets
+- Voir section 24 — toutes les contraintes critiques s'appliquent
+- Ne pas remplacer HashRouter par BrowserRouter
+- Ne pas changer `base` dans `vite.config.ts`
+- Ne pas exposer les valeurs des secrets
+- Ne pas introduire de nouveau framework ou librairie sans demande explicite
+- Ne pas supprimer les classes `dark:` Tailwind existantes
 
 **Lors d'ajouts :**
-- Respecter les conventions de nommage existantes (PascalCase composants, camelCase hooks)
-- Ajouter les traductions FR ET AR simultanément
-- Ajouter les variantes dark mode pour tout nouveau composant UI
-- Tester le build (`npm run build`) après modifications importantes
+- Respecter les conventions PascalCase composants, camelCase hooks
+- Ajouter les traductions FR ET AR simultanément dans `translations.ts`
+- Ajouter les variantes `dark:` pour tout nouveau composant UI
+- Vérifier `npm run build` après modifications importantes
+- Pour tout nouveau hook Realtime : appliquer le pattern instanceId obligatoire
 
 **En cas de doute :**
 - Demander confirmation avant de modifier l'architecture
 - Préférer une modification minimale à une réécriture complète
-- Analyser l'existant avant de proposer une solution
 
 ---
 
-## 30. Development Environment
+## 28. Environment de Développement
 
-### IDE Principal
+**IDE :** JetBrains WebStorm (`.idea/` exclu du git)
 
-**JetBrains WebStorm** (2024.x ou supérieur)
-
-Le projet est configuré pour WebStorm :
-- `.idea/` exclu du git via `.gitignore`
-- `*.iml` exclu du git via `.gitignore`
-- `eslint.config.js` présent à la racine (WebStorm le détecte automatiquement)
-- `tsconfig.json` en racine (WebStorm l'utilise pour l'assistance TypeScript)
-
-### Versions de référence
-
-| Outil | Version de référence | Notes |
+| Outil | Version | Notes |
 |---|---|---|
-| Node.js | 24 (LTS) | Défini dans `.nvmrc` et GitHub Actions |
+| Node.js | 24 (LTS) | `.nvmrc` + GitHub Actions |
 | npm | 10.x+ | Inclus avec Node 24 |
-| TypeScript | ^5.5.3 | Défini dans `package.json` |
-| Vite | ^5.4.1 | Build tool + dev server |
-| ESLint | ^9.9.0 | Flat config (`eslint.config.js`) |
+| TypeScript | ^5.5.3 | strict, noUnusedLocals, noUnusedParameters |
+| ESLint | ^9.9.0 | Flat config `eslint.config.js` |
 
-**Note :** Node.js v22 fonctionne également avec ce projet. La version 20 est la référence car c'est celle utilisée par GitHub Actions.
-
-### Commandes de Développement
-
-```bash
-npm install        # Installer les dépendances
-npm run dev        # Dev server → http://localhost:5173/nova-shop/
-npm run build      # Build production → dist/
-npm run preview    # Preview build → http://localhost:4173/nova-shop/
-npm run lint       # ESLint (eslint.config.js flat config v9)
+**Workflow déploiement :**
+```
+WebStorm → Ctrl+K (commit) → Ctrl+Shift+K (push) → GitHub main
+→ GitHub Actions (2-3 min) → GitHub Pages production
 ```
 
-### Workflow Git → GitHub → Pages
-
-```
-WebStorm (édition code)
-  ↓  Ctrl+K  (Commit)
-  ↓  Ctrl+Shift+K  (Push)
-GitHub (repository distant — branch main)
-  ↓  déclenchement automatique
-GitHub Actions (.github/workflows/deploy.yml)
-  ↓  npm ci  +  npm run build  (Node 24, secrets injectés)
-GitHub Pages
-  ↓
-https://<USERNAME>.github.io/nova-shop/
-```
-
-### État Git actuel
-
-**⚠ Important :** Au moment de la rédaction de ce fichier, le projet n'est PAS encore initialisé comme repository git.
-
-Pour initialiser :
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/<USERNAME>/nova-shop.git
-git push -u origin main
-```
-
-Depuis WebStorm : `VCS > Enable Version Control Integration > Git`
-
-### Fichiers à ne jamais committer
-
-| Fichier | Raison |
-|---|---|
-| `.env` | Contient les clés Supabase |
-| `.env.local` | Couvert par pattern `*.local` dans `.gitignore` |
-| `.env.production` | Variables de production |
-| `node_modules/` | Dépendances installables via npm |
-| `dist/` | Artefacts de build |
-| `.idea/` | Configuration personnelle WebStorm |
-| `*.iml` | Fichiers module JetBrains |
-
-### Technologies
-
-| Technologie | Rôle |
-|---|---|
-| React 18 | UI framework |
-| TypeScript 5 | Typage statique |
-| Vite 5 | Build + dev server |
-| Tailwind CSS 3 | Styles |
-| Supabase | BaaS (DB + Auth + Storage) |
-| react-router-dom v6 | Routing (HashRouter) |
-
-### Repository distant
-
-- **Plateforme :** GitHub
-- **Branch principale :** `main`
-- **Déploiement :** GitHub Actions → GitHub Pages
-- **URL production :** `https://<USERNAME>.github.io/nova-shop/`
+**Fichiers à ne jamais committer :**
+`.env`, `node_modules/`, `dist/`, `.idea/`, `*.iml`

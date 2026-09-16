@@ -23,6 +23,9 @@ import { AdminUsersPage } from './pages/Admin/UsersPage'
 import { CRCSettingsPage } from './pages/Admin/CRCSettingsPage'
 import { SupervisionPage } from './pages/Admin/SupervisionPage'
 import { HistoryPage } from './pages/Admin/HistoryPage'
+import { CustomersPage } from './pages/Admin/CustomersPage'
+import { EmailPage } from './pages/Admin/EmailPage'
+import { EmailSettingsPage } from './pages/Admin/EmailSettingsPage'
 import { SetPasswordPage } from './pages/SetPasswordPage'
 import { ProtectedRoute } from './pages/Admin/ProtectedRoute'
 
@@ -76,7 +79,10 @@ function AppContent() {
           <Route path="/admin/crc-settings" element={<ProtectedRoute requiredRole="admin"><CRCSettingsPage /></ProtectedRoute>} />
 
           {/* Admin — routes protégées (agent + admin) */}
-          <Route path="/admin/history"      element={<ProtectedRoute requiredRole="agent"><HistoryPage /></ProtectedRoute>} />
+          <Route path="/admin/history"       element={<ProtectedRoute requiredRole="agent"><HistoryPage /></ProtectedRoute>} />
+          <Route path="/admin/customers"     element={<ProtectedRoute requiredRole="agent"><CustomersPage /></ProtectedRoute>} />
+          <Route path="/admin/email"         element={<ProtectedRoute requiredRole="agent"><EmailPage /></ProtectedRoute>} />
+          <Route path="/admin/email-settings" element={<ProtectedRoute requiredRole="admin"><EmailSettingsPage /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -1,5 +1,5 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Package, PlusCircle, Tag, LogOut, ShoppingBag, Menu, ShoppingCart, Sun, Moon, MessageSquare, Users, UserCircle, Settings, BarChart2, History } from 'lucide-react'
+import { LayoutDashboard, Package, PlusCircle, Tag, LogOut, ShoppingBag, Menu, ShoppingCart, Sun, Moon, MessageSquare, Users, UserCircle, Settings, BarChart2, History, UserRound, Mail } from 'lucide-react'
 import { useState } from 'react'
 import { useI18n } from '../../context/LanguageContext'
 import { useThemeCtx } from '../../context/ThemeContext'
@@ -54,10 +54,13 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { to: '/admin/products',     icon: <Package         className="w-5 h-5" />, label: t('admin.products'),    adminOnly: true },
     { to: '/admin/products/new', icon: <PlusCircle      className="w-5 h-5" />, label: t('admin.add_product'), adminOnly: true },
     { to: '/admin/categories',   icon: <Tag             className="w-5 h-5" />, label: t('admin.categories'),  adminOnly: true },
-    { to: '/admin/history',      icon: <History         className="w-5 h-5" />, label: t('admin.history')                       },
-    { to: '/admin/users',        icon: <Users           className="w-5 h-5" />, label: t('admin.users'),        adminOnly: true },
-    { to: '/admin/supervision',  icon: <BarChart2       className="w-5 h-5" />, label: t('admin.supervision'),  adminOnly: true },
-    { to: '/admin/crc-settings', icon: <Settings        className="w-5 h-5" />, label: t('admin.crc_settings'), adminOnly: true },
+    { to: '/admin/history',       icon: <History         className="w-5 h-5" />, label: t('admin.history')                        },
+    { to: '/admin/customers',    icon: <UserRound       className="w-5 h-5" />, label: t('admin.customers')                      },
+    { to: '/admin/email',        icon: <Mail            className="w-5 h-5" />, label: t('admin.emails')                         },
+    { to: '/admin/users',        icon: <Users           className="w-5 h-5" />, label: t('admin.users'),        adminOnly: true  },
+    { to: '/admin/supervision',  icon: <BarChart2       className="w-5 h-5" />, label: t('admin.supervision'),  adminOnly: true  },
+    { to: '/admin/email-settings',icon: <Settings       className="w-5 h-5" />, label: t('admin.email_settings'), adminOnly: true},
+    { to: '/admin/crc-settings', icon: <Settings        className="w-5 h-5" />, label: t('admin.crc_settings'), adminOnly: true  },
   ]
 
   const visibleItems = navItems.filter(item => !item.adminOnly || isAdmin)

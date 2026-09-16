@@ -2,9 +2,17 @@ import * as XLSX from 'xlsx'
 import type { Order, OrderStatus } from '../types'
 import type { ConversationHistoryItem } from '../types/chat'
 
-const STATUS_LABELS: Record<string, Record<OrderStatus, string>> = {
-  fr: { new: 'Nouvelle', contacted: 'Contactée', confirmed: 'Confirmée', cancelled: 'Annulée', completed: 'Terminée' },
-  ar: { new: 'جديدة', contacted: 'تم التواصل', confirmed: 'مؤكدة', cancelled: 'ملغاة', completed: 'مكتملة' },
+const STATUS_LABELS: Record<string, Partial<Record<OrderStatus, string>>> = {
+  fr: {
+    new: 'Nouvelle', assigned: 'Assignée', contacted: 'Contactée', unreachable: 'Injoignable',
+    callback: 'Rappel', confirmed: 'Confirmée', processing: 'En préparation', shipped: 'Expédiée',
+    delivered: 'Livrée', returned: 'Retournée', cancelled: 'Annulée', on_hold: 'En attente',
+  },
+  ar: {
+    new: 'جديدة', assigned: 'معينة', contacted: 'تم التواصل', unreachable: 'غير متاح',
+    callback: 'معاودة', confirmed: 'مؤكدة', processing: 'قيد التحضير', shipped: 'تم الشحن',
+    delivered: 'تم التوصيل', returned: 'مرجعة', cancelled: 'ملغاة', on_hold: 'في الانتظار',
+  },
 }
 
 function statusLabel(status: OrderStatus, lang: string): string {
