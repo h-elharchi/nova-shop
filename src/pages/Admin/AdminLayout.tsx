@@ -1,10 +1,10 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Package, PlusCircle, Tag, LogOut, ShoppingBag, Menu, ShoppingCart, Sun, Moon, MessageSquare, Users, UserCircle } from 'lucide-react'
+import { LayoutDashboard, Package, PlusCircle, Tag, LogOut, ShoppingBag, Menu, ShoppingCart, Sun, Moon, MessageSquare, Users, UserCircle, Settings } from 'lucide-react'
 import { useState } from 'react'
 import { useI18n } from '../../context/LanguageContext'
 import { useThemeCtx } from '../../context/ThemeContext'
 import { useStaffAuth } from '../../hooks/useStaffAuth'
-import { useChatPresence } from '../../hooks/useChatPresence'
+import { useAgentCtx } from '../../context/AgentContext'
 
 interface AdminLayoutProps {
   children: React.ReactNode
@@ -16,7 +16,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const { signOut, user, profile, isAdmin } = useStaffAuth()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { waitingCount } = useChatPresence(user?.id ?? null)
+  const { waitingCount, myStatus, myActiveCount } = useAgentCtx()
+
+  const statusDotBg: Record<string, string> = {
+    available: 'bg-green-500',
+    busy: 'bg-orange-500',
+    pause: 'bg-yellow-500',
+    offline: 'bg-gray-400',
+  }
 
   const handleLogout = async () => {
     await signOut()
@@ -47,7 +54,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { to: '/admin/products',     icon: <Package         className="w-5 h-5" />, label: t('admin.products'),    adminOnly: true },
     { to: '/admin/products/new', icon: <PlusCircle      className="w-5 h-5" />, label: t('admin.add_product'), adminOnly: true },
     { to: '/admin/categories',   icon: <Tag             className="w-5 h-5" />, label: t('admin.categories'),  adminOnly: true },
-    { to: '/admin/users',        icon: <Users           className="w-5 h-5" />, label: t('admin.users'),       adminOnly: true },
+    { to: '/admin/users',        icon: <Users           className="w-5 h-5" />, label: t('admin.users'),        adminOnly: true },
+    { to: '/admin/crc-settings', icon: <Settings        className="w-5 h-5" />, label: t('admin.crc_settings'), adminOnly: true },
   ]
 
   const visibleItems = navItems.filter(item => !item.adminOnly || isAdmin)
@@ -89,6 +97,24 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           </NavLink>
         ))}
       </nav>
+
+      {/* Compact agent status */}
+      {myStatus !== 'offline' && (
+        <div className="mx-4 mb-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-700/50 flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotBg[myStatus] ?? 'bg-gray-400'}`} />
+          <span className="text-xs text-gray-600 dark:text-gray-300">
+            {myStatus === 'available' ? t('chat.admin_available')
+              : myStatus === 'busy' ? t('chat.admin_busy')
+              : myStatus === 'pause' ? t('chat.admin_pause')
+              : t('chat.admin_offline')}
+          </span>
+          {myActiveCount > 0 && (
+            <span className="ml-auto text-xs font-medium text-gray-500 dark:text-gray-400">
+              {myActiveCount}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="p-4 border-t border-gray-100 dark:border-dark-border space-y-1">
         {/* Mon compte */}

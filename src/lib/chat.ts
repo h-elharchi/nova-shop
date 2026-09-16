@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { ChatConversation, ChatMessage, AgentsOnlineStatus } from '../types/chat'
+import type { ChatConversation, ChatMessage, AgentsOnlineStatus, CrcPauseReason, CrcDispositionCode, CrcQuickReply, ClientCard360 } from '../types/chat'
 
 const CHAT_SESSION_KEY = 'nova-chat-session'
 
@@ -127,8 +127,14 @@ export async function ensureChatAgent(): Promise<void> {
   await supabase.rpc('ensure_chat_agent')
 }
 
-export async function updateAgentHeartbeat(status?: 'offline' | 'available' | 'busy'): Promise<void> {
-  await supabase.rpc('update_agent_heartbeat', { p_status: status ?? null })
+export async function updateAgentHeartbeat(
+  status?: string,
+  pauseReasonId?: string | null,
+): Promise<void> {
+  await supabase.rpc('update_agent_heartbeat', {
+    p_status: status ?? null,
+    p_pause_reason_id: pauseReasonId ?? null,
+  })
 }
 
 export async function claimConversation(conversationId: string): Promise<ChatConversation | null> {
@@ -161,6 +167,77 @@ export async function loadAdminConversations(filter: {
   const { data, error } = await query
   if (error || !data) return []
   return data as ChatConversation[]
+}
+
+// ── CRC — Wrap-up ─────────────────────────────────────────────────────────────
+
+export async function closeConversationWithWrapup(params: {
+  conversationId: string
+  dispositionId: string | null
+  notes: string
+  wrapUpSeconds: number
+}): Promise<void> {
+  await supabase.rpc('close_conversation_with_wrapup', {
+    p_conversation_id: params.conversationId,
+    p_disposition_id:  params.dispositionId ?? null,
+    p_internal_notes:  params.notes || null,
+    p_wrap_up_seconds: params.wrapUpSeconds,
+  })
+}
+
+// ── CRC — Transfert ───────────────────────────────────────────────────────────
+
+export async function transferConversation(params: {
+  conversationId: string
+  targetAdminId: string
+  note?: string
+}): Promise<void> {
+  const { error } = await supabase.rpc('transfer_conversation', {
+    p_conversation_id: params.conversationId,
+    p_target_admin_id: params.targetAdminId,
+    p_transfer_note:   params.note ?? null,
+  })
+  if (error) throw new Error(error.message)
+}
+
+// ── CRC — Fiche client 360° ───────────────────────────────────────────────────
+
+export async function loadClientCard360(phone: string): Promise<ClientCard360 | null> {
+  const { data, error } = await supabase.rpc('get_client_360', { p_phone: phone })
+  if (error || !data) return null
+  return data as ClientCard360
+}
+
+// ── CRC — Tables de référence ─────────────────────────────────────────────────
+
+export async function loadPauseReasons(): Promise<CrcPauseReason[]> {
+  const { data, error } = await supabase
+    .from('crc_pause_reasons')
+    .select('*')
+    .eq('is_active', true)
+    .order('display_order')
+  if (error || !data) return []
+  return data as CrcPauseReason[]
+}
+
+export async function loadDispositionCodes(): Promise<CrcDispositionCode[]> {
+  const { data, error } = await supabase
+    .from('crc_disposition_codes')
+    .select('*')
+    .eq('is_active', true)
+    .order('display_order')
+  if (error || !data) return []
+  return data as CrcDispositionCode[]
+}
+
+export async function loadQuickReplies(): Promise<CrcQuickReply[]> {
+  const { data, error } = await supabase
+    .from('crc_quick_replies')
+    .select('*')
+    .eq('is_active', true)
+    .order('display_order')
+  if (error || !data) return []
+  return data as CrcQuickReply[]
 }
 
 // ── Formatters ────────────────────────────────────────────────────────────────

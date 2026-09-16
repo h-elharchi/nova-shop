@@ -1,8 +1,10 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { LanguageContext } from './context/LanguageContext'
 import { ThemeContext } from './context/ThemeContext'
+import { AgentProvider } from './context/AgentContext'
 import { useLanguage } from './hooks/useLanguage'
 import { useTheme } from './hooks/useTheme'
+import { useAuth } from './hooks/useAuth'
 import { HomePage } from './pages/Home'
 import { ProductsPage } from './pages/Products'
 import { ProductDetailsPage } from './pages/ProductDetails'
@@ -18,6 +20,7 @@ import { AdminOrdersPage } from './pages/Admin/OrdersPage'
 import { AdminChatPage } from './pages/Admin/ChatPage'
 import { AdminAccountPage } from './pages/Admin/AccountPage'
 import { AdminUsersPage } from './pages/Admin/UsersPage'
+import { CRCSettingsPage } from './pages/Admin/CRCSettingsPage'
 import { SetPasswordPage } from './pages/SetPasswordPage'
 import { ProtectedRoute } from './pages/Admin/ProtectedRoute'
 
@@ -33,12 +36,14 @@ function AuthRedirectHandler() {
 function AppContent() {
   const lang = useLanguage()
   const theme = useTheme()
+  const { user } = useAuth()
 
   return (
     <ThemeContext.Provider value={theme}>
       <LanguageContext.Provider value={lang}>
-        <AuthRedirectHandler />
-        <Routes>
+        <AgentProvider userId={user?.id ?? null}>
+          <AuthRedirectHandler />
+          <Routes>
           {/* Public */}
           <Route path="/" element={<HomePage />} />
           <Route path="/products" element={<ProductsPage />} />
@@ -64,10 +69,12 @@ function AppContent() {
           <Route path="/admin/products/new" element={<ProtectedRoute requiredRole="admin"><ProductFormPage /></ProtectedRoute>} />
           <Route path="/admin/products/:id/edit" element={<ProtectedRoute requiredRole="admin"><ProductFormPage /></ProtectedRoute>} />
           <Route path="/admin/categories" element={<ProtectedRoute requiredRole="admin"><AdminCategoriesPage /></ProtectedRoute>} />
-          <Route path="/admin/users" element={<ProtectedRoute requiredRole="admin"><AdminUsersPage /></ProtectedRoute>} />
+          <Route path="/admin/users"        element={<ProtectedRoute requiredRole="admin"><AdminUsersPage /></ProtectedRoute>} />
+          <Route path="/admin/crc-settings" element={<ProtectedRoute requiredRole="admin"><CRCSettingsPage /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </AgentProvider>
       </LanguageContext.Provider>
     </ThemeContext.Provider>
   )

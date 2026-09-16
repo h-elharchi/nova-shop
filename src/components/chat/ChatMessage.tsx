@@ -10,11 +10,19 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const { t } = useI18n()
 
   if (message.sender_type === 'system') {
-    const text = message.message === 'conversation_started'
-      ? t('chat.system_started')
-      : message.message === 'conversation_closed'
-      ? t('chat.system_closed')
-      : message.message
+    let text: string
+    if (message.message === 'conversation_started') {
+      text = t('chat.system_started')
+    } else if (message.message === 'conversation_closed') {
+      text = t('chat.system_closed')
+    } else if (message.message === 'conversation_transferred') {
+      text = t('chat.system_transferred')
+    } else if (message.message.startsWith('conversation_transferred:')) {
+      const note = message.message.slice('conversation_transferred:'.length)
+      text = `${t('chat.system_transferred')}${note ? ` — ${note}` : ''}`
+    } else {
+      text = message.message
+    }
 
     return (
       <div className="flex justify-center my-2">
