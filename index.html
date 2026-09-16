@@ -27,6 +27,24 @@
         } catch (e) {}
       })();
     </script>
+    <!-- Supabase auth callback interceptor:
+         HashRouter uses window.location.hash for routing.
+         Supabase sends auth tokens as hash fragments (#access_token=...).
+         HashRouter intercepts them BEFORE Supabase reads them, replacing the hash
+         with #/ (catch-all route). This script runs synchronously before any module,
+         captures the tokens in sessionStorage, then redirects to #/set-password
+         so HashRouter routes correctly and SetPasswordPage can call setSession(). -->
+    <script>
+      (function () {
+        try {
+          var h = window.location.hash;
+          if (h && h.indexOf('access_token=') !== -1) {
+            sessionStorage.setItem('_nova_auth', h.slice(1));
+            history.replaceState(null, '', window.location.pathname + window.location.search + '#/set-password');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

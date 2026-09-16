@@ -1,10 +1,8 @@
-import { useEffect, useRef } from 'react'
-import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { LanguageContext } from './context/LanguageContext'
 import { ThemeContext } from './context/ThemeContext'
 import { useLanguage } from './hooks/useLanguage'
 import { useTheme } from './hooks/useTheme'
-import { supabase } from './lib/supabase'
 import { HomePage } from './pages/Home'
 import { ProductsPage } from './pages/Products'
 import { ProductDetailsPage } from './pages/ProductDetails'
@@ -23,36 +21,12 @@ import { AdminUsersPage } from './pages/Admin/UsersPage'
 import { SetPasswordPage } from './pages/SetPasswordPage'
 import { ProtectedRoute } from './pages/Admin/ProtectedRoute'
 
-// Redirige vers /set-password uniquement pour les flux d'invitation et de
-// récupération de mot de passe. NE déclenchement PAS sur un login normal.
+// Les liens d'invitation et de récupération de mot de passe sont interceptés dans
+// index.html avant que React charge (les tokens hash sont capturés en sessionStorage
+// et le hash est remplacé par #/set-password). Ce composant n'est plus nécessaire
+// pour ces flux mais reste en place au cas où Supabase enverrait l'événement
+// PASSWORD_RECOVERY sans hash (ex. flux PKCE futur).
 function AuthRedirectHandler() {
-  const navigate = useNavigate()
-  const handledRef = useRef(false)
-
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (handledRef.current) return
-
-      // Lien de récupération (reset password via email)
-      if (event === 'PASSWORD_RECOVERY') {
-        handledRef.current = true
-        navigate('/set-password', { replace: true })
-        return
-      }
-
-      // Lien d'invitation — détecté uniquement via le hash de l'URL
-      // (ne pas interférer avec un login normal)
-      if (event === 'SIGNED_IN') {
-        const hash = window.location.hash
-        if (hash.includes('type=invite')) {
-          handledRef.current = true
-          navigate('/set-password', { replace: true })
-        }
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [navigate])
-
   return null
 }
 

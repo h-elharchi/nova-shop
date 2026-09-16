@@ -17,13 +17,31 @@ export function SetPasswordPage() {
   const [error, setError]           = useState<string | null>(null)
   const [success, setSuccess]       = useState(false)
 
-  // Vérifier qu'on a une session valide (provenant du lien d'invitation ou de reset)
   useEffect(() => {
+    // index.html captures Supabase auth hash fragments into sessionStorage before
+    // HashRouter can clear them. We read them here and call setSession manually.
+    let storedAuth: string | null = null
+    try { storedAuth = sessionStorage.getItem('_nova_auth') } catch {}
+
+    if (storedAuth) {
+      try { sessionStorage.removeItem('_nova_auth') } catch {}
+      const params = new URLSearchParams(storedAuth)
+      const accessToken  = params.get('access_token')
+      const refreshToken = params.get('refresh_token')
+      if (accessToken && refreshToken) {
+        supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+          .then(({ error }) => setHasSession(!error))
+      } else {
+        setHasSession(false)
+      }
+      return
+    }
+
+    // Fallback: session déjà présente (ex. rechargement de page)
     supabase.auth.getSession().then(({ data }) => {
       setHasSession(!!data.session)
     })
 
-    // Écouter l'événnement d'invite / password_recovery
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' || event === 'PASSWORD_RECOVERY') {
         setHasSession(!!session)
