@@ -1,4 +1,3 @@
-import { useI18n } from '../../context/LanguageContext'
 import { ChatHeader } from './ChatHeader'
 import { ChatCustomerForm } from './ChatCustomerForm'
 import { ChatQueueStatus } from './ChatQueueStatus'
@@ -30,8 +29,6 @@ export function ChatWidget({
   onNewConversation,
   onResetToIdle,
 }: ChatWidgetProps) {
-  const { } = useI18n()
-
   const statusDot = widgetState === 'active' ? 'green'
     : widgetState === 'waiting' || widgetState === 'searching' ? 'orange'
     : 'gray'

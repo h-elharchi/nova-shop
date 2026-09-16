@@ -22,6 +22,7 @@ Les clients parcourent le catalogue, commandent via WhatsApp ou via un formulair
 - Commande directe via formulaire (prénom, nom, téléphone marocain)
 - Commande via WhatsApp avec message pré-rempli
 - Bouton WhatsApp flottant sur mobile
+- Chat en temps réel avec un agent (widget flottant, file d'attente, countdown 30 s)
 - Interface bilingue FR / AR avec RTL complet
 - Dark mode / light mode avec persistance
 - Design responsive (mobile-first)
@@ -34,6 +35,7 @@ Les clients parcourent le catalogue, commandent via WhatsApp ou via un formulair
 - Gestion commandes : filtres avancés (statut, produit, période), changement de statut
 - Export Excel des commandes filtrées
 - Appel / WhatsApp direct depuis les commandes
+- Interface chat temps réel : file d'attente, prise en charge, historique, toggle disponibilité
 
 ---
 
@@ -43,9 +45,10 @@ Les clients parcourent le catalogue, commandent via WhatsApp ou via un formulair
 React SPA (HashRouter)
     │
     ├── Supabase Client (@supabase/supabase-js)
-    │       ├── Auth          → session admin email/password
-    │       ├── Database      → PostgreSQL (categories, products, orders…)
-    │       └── Storage       → product-images, product-videos
+    │       ├── Auth          → session admin email/password + clients anonymes (signInAnonymously)
+    │       ├── Database      → PostgreSQL (categories, products, orders, chat…)
+    │       ├── Storage       → product-images, product-videos
+    │       └── Realtime      → chat_messages, chat_conversations, chat_agents
     │
     └── WhatsApp              → lien wa.me (externe)
 
@@ -79,7 +82,7 @@ Pas de Redux ou Zustand. Uniquement :
 
 ### Composants Layout
 
-`Layout` = `Header` + `<main>` + `Footer` + `WhatsAppFloat`  
+`Layout` = `Header` + `<main>` + `Footer` + `WhatsAppFloat` + `ChatButton`  
 Toutes les pages publiques utilisent `Layout`. Les pages admin utilisent `AdminLayout`.
 
 ---
@@ -101,10 +104,11 @@ export const supabase = createClient(
 
 | Service | Utilisation |
 |---|---|
-| Supabase Database | Toutes les données (produits, catégories, commandes, profils) |
-| Supabase Auth | Authentification admin (email/password) |
+| Supabase Database | Toutes les données (produits, catégories, commandes, profils, chat) |
+| Supabase Auth | Authentification admin (email/password) + clients chat (anonyme) |
 | Supabase Storage | Images et vidéos produits |
-| RLS PostgreSQL | Contrôle d'accès aux données |
+| Supabase Realtime | Messagerie chat temps réel (messages, conversations, présence agents) |
+| RLS PostgreSQL | Contrôle d'accès aux données (isolation par utilisateur pour le chat) |
 
 ---
 
@@ -120,6 +124,9 @@ categories (1) ──< products (N)
                       └──< orders (N)
 
 auth.users (1) ── profiles (1)
+auth.users (1) ──< chat_conversations (N)   [customer_user_id — session anonyme]
+chat_conversations (1) ──< chat_messages (N)
+auth.users (1) ── chat_agents (1)           [user_id — admin]
 ```
 
 ---
@@ -172,6 +179,9 @@ $$ LANGUAGE sql SECURITY DEFINER;
 | `product_videos` | À configurer | À configurer |
 | `profiles` | SELECT own | SELECT all |
 | `orders` | INSERT uniquement | FULL ACCESS |
+| `chat_conversations` | SELECT/INSERT WHERE customer_user_id = auth.uid() | FULL ACCESS |
+| `chat_messages` | SELECT/INSERT sur ses propres conversations | FULL ACCESS |
+| `chat_agents` | — | FULL ACCESS |
 
 ### Créer un admin
 
@@ -351,7 +361,62 @@ function slugify(text: string) {
 
 ---
 
-## 15. Internationalisation FR/AR
+## 15. Système de Chat Temps Réel
+
+### Vue d'ensemble
+
+Le chat permet aux clients de contacter un agent admin directement depuis le site. Il est entièrement géré par Supabase (Realtime, Auth anonyme, RLS). Aucun serveur tiers n'est requis.
+
+### Authentification client
+
+Les clients s'authentifient via `supabase.auth.signInAnonymously()` avant d'ouvrir une conversation. Cette session est persistée dans `sessionStorage` (clé `nova-chat-session`) et permet de reprendre une conversation active après un rechargement de page.
+
+### États du widget client
+
+| État | Description |
+|---|---|
+| `idle` | Widget fermé, bouton visible |
+| `form` | Formulaire prénom / nom / téléphone |
+| `connecting` | Création de la conversation en cours |
+| `searching` | Countdown 30 s — aucun agent en ligne |
+| `waiting` | En file d'attente — agents occupés |
+| `active` | Conversation ouverte avec un agent |
+| `closed` | Conversation terminée par l'agent |
+| `timeout` | Aucun agent disponible après 30 s |
+
+### File d'attente et assignation
+
+1. À la création de la conversation, `assign_to_available_admin()` tente une assignation immédiate.
+2. Si des agents sont occupés : la conversation passe en `waiting` et reçoit un `queue_position`.
+3. Si aucun agent n'est en ligne : countdown 30 s + souscription Realtime sur `chat_agents`. Dès qu'un agent passe `available`, assignation automatique.
+4. La prise en charge par l'admin utilise `claim_conversation()` — une fonction PostgreSQL avec `FOR UPDATE SKIP LOCKED` pour éviter les race conditions quand plusieurs admins prennent la même conversation simultanément.
+
+### Présence agent admin
+
+Les admins qui ont la page `/admin/chat` ouverte envoient un heartbeat toutes les 20 secondes via `update_agent_heartbeat()`. La fonction `check_agents_online()` ne considère comme "en ligne" que les agents dont le `last_seen_at` date de moins de 2 minutes.
+
+### Fichiers clés
+
+| Fichier | Rôle |
+|---|---|
+| `supabase-chat.sql` | Schéma complet + RLS + fonctions PostgreSQL |
+| `src/types/chat.ts` | Types TypeScript du module chat |
+| `src/lib/chat.ts` | Fonctions utilitaires (auth anonyme, CRUD, RPCs) |
+| `src/hooks/useChat.ts` | Machine d'état côté client |
+| `src/hooks/useChatMessages.ts` | Chargement + Realtime messages |
+| `src/hooks/useChatPresence.ts` | Présence admin + liste conversations |
+| `src/components/chat/` | 9 composants UI (widget, messages, formulaire…) |
+| `src/pages/Admin/ChatPage.tsx` | Interface admin complète |
+
+### Sécurité RLS
+
+- Un client ne peut **jamais** lire les conversations d'un autre client.
+- Les messages ne sont accessibles qu'au client propriétaire de la conversation et aux admins.
+- Les agents (`chat_agents`) ne sont visibles que par les admins.
+
+---
+
+## 16. Internationalisation FR/AR
 
 **Fichier :** `src/i18n/translations.ts`
 
@@ -376,7 +441,7 @@ order.*       → Commandes
 
 ---
 
-## 16. RTL
+## 17. RTL
 
 **Activation automatique** quand lang = `'ar'` :
 
@@ -395,7 +460,7 @@ document.documentElement.lang = lang
 
 ---
 
-## 17. Dark Mode
+## 18. Dark Mode
 
 **Implémentation :** Classe `dark` sur `<html>` + Tailwind `darkMode: 'class'`
 
@@ -415,7 +480,7 @@ dark-border:  #252B38
 
 ---
 
-## 18. Responsive Design
+## 19. Responsive Design
 
 | Breakpoint Tailwind | Largeur | Utilisation |
 |---|---|---|
@@ -427,7 +492,7 @@ dark-border:  #252B38
 
 ---
 
-## 19. Technologies Utilisées
+## 20. Technologies Utilisées
 
 | Technologie | Version | Utilisation |
 |---|---|---|
@@ -446,13 +511,14 @@ dark-border:  #252B38
 
 ---
 
-## 20. APIs et Services
+## 21. APIs et Services
 
 | API / Service | Utilisation | Authentification | Fichier(s) |
 |---|---|---|---|
 | Supabase Database API | CRUD produits, catégories, commandes, profils | Anon key (RLS) | `src/lib/supabase.ts`, tous les hooks |
 | Supabase Auth API | Login admin, session | Email/password | `src/hooks/useAuth.ts` |
 | Supabase Storage API | Upload/lecture images et vidéos | Anon key (Storage RLS) | `src/pages/Admin/ProductFormPage.tsx` |
+| Supabase Realtime | Chat temps réel (messages, présence) | Anon key (RLS) | `src/hooks/useChatMessages.ts`, `src/hooks/useChatPresence.ts` |
 | wa.me (WhatsApp) | Redirection WhatsApp avec message | Aucune | `src/lib/whatsapp.ts` |
 | Google Fonts | Police Cairo pour l'arabe | Aucune | `index.html`, `src/index.css` |
 | GitHub Actions | CI/CD build + déploiement | Secrets GitHub | `.github/workflows/deploy.yml` |
@@ -460,7 +526,7 @@ dark-border:  #252B38
 
 ---
 
-## 21. Variables d'Environnement
+## 22. Variables d'Environnement
 
 **Noms des variables (ne jamais afficher les valeurs) :**
 
@@ -478,7 +544,7 @@ dark-border:  #252B38
 
 ---
 
-## 22. Structure du Projet
+## 23. Structure du Projet
 
 ```
 nova-shop/
@@ -498,6 +564,7 @@ nova-shop/
 ├── package.json                      # Dépendances et scripts
 ├── supabase-setup.sql                # SQL: categories, products, product_images, profiles, RLS
 ├── supabase-orders.sql               # SQL: orders, index, RLS
+├── supabase-chat.sql                 # SQL: chat_conversations, chat_messages, chat_agents, RLS, fonctions
 │
 ├── public/
 │   ├── favicon.ico / .svg / .png    # Favicons multi-résolutions
@@ -522,11 +589,15 @@ nova-shop/
     │   ├── useCategories.ts          # Fetch catégories actives
     │   ├── useProducts.ts            # Fetch produits avec filtres
     │   ├── useProduct.ts             # Fetch produit par slug
-    │   └── useOrders.ts              # Créer commande, lister commandes, stats
+    │   ├── useOrders.ts              # Créer commande, lister commandes, stats
+    │   ├── useChat.ts                # Machine d'état widget chat client
+    │   ├── useChatMessages.ts        # Chargement + Realtime messages
+    │   └── useChatPresence.ts        # Présence admin + liste conversations (Realtime)
     ├── lib/
     │   ├── supabase.ts               # Client Supabase singleton
     │   ├── whatsapp.ts               # Utilitaires WhatsApp
-    │   └── exportExcel.ts            # Export XLSX
+    │   ├── exportExcel.ts            # Export XLSX
+    │   └── chat.ts                   # Auth anonyme, CRUD conversations/messages, RPCs
     ├── components/
     │   ├── layout/
     │   │   ├── Header.tsx            # Navbar + menu mobile + langue + dark mode
@@ -538,9 +609,19 @@ nova-shop/
     │   ├── orders/
     │   │   ├── OrderModal.tsx        # Modal de commande
     │   │   └── OrderStatusBadge.tsx  # Badge statut coloré
-    │   └── whatsapp/
-    │       ├── WhatsAppButton.tsx    # Bouton WhatsApp contextuel
-    │       └── WhatsAppFloat.tsx     # Bulle flottante mobile
+    │   ├── whatsapp/
+    │   │   ├── WhatsAppButton.tsx    # Bouton WhatsApp contextuel
+    │   │   └── WhatsAppFloat.tsx     # Bulle flottante mobile (bottom-20 right-4)
+    │   └── chat/
+    │       ├── ChatButton.tsx        # Bouton flottant bleu + conteneur widget
+    │       ├── ChatWidget.tsx        # Shell widget (dimensions responsives)
+    │       ├── ChatHeader.tsx        # En-tête bleue avec statut et boutons
+    │       ├── ChatCustomerForm.tsx  # Formulaire d'identification client
+    │       ├── ChatQueueStatus.tsx   # Affichage countdown / file d'attente
+    │       ├── ChatClosedMessage.tsx # Écran de fin de conversation
+    │       ├── ChatMessage.tsx       # Bulle de message (customer/admin/system)
+    │       ├── ChatInput.tsx         # Zone de saisie avec auto-hauteur
+    │       └── ChatWindow.tsx        # Conteneur messages + input
     └── pages/
         ├── Home/index.tsx            # Accueil
         ├── Products/index.tsx        # Catalogue avec filtres
@@ -556,12 +637,13 @@ nova-shop/
             ├── ProductsPage.tsx      # Liste produits admin
             ├── ProductFormPage.tsx   # Formulaire produit (création/édition)
             ├── CategoriesPage.tsx    # Gestion catégories
-            └── OrdersPage.tsx        # Gestion commandes
+            ├── OrdersPage.tsx        # Gestion commandes
+            └── ChatPage.tsx          # Interface admin chat (file, actif, historique)
 ```
 
 ---
 
-## 23. Database Schema
+## 24. Database Schema
 
 ### Table `categories`
 
@@ -643,9 +725,47 @@ nova-shop/
 
 **Index sur `orders` :** `product_id`, `status`, `created_at DESC`, `customer_phone`
 
+### Table `chat_conversations`
+
+| Colonne | Type | Nullable | Default | Contrainte |
+|---|---|---|---|---|
+| id | UUID | NO | gen_random_uuid() | PK |
+| customer_user_id | UUID | NO | — | FK → auth.users ON DELETE CASCADE |
+| customer_first_name | TEXT | NO | — | |
+| customer_last_name | TEXT | NO | — | |
+| customer_phone | TEXT | NO | — | |
+| status | TEXT | NO | 'waiting' | CHECK IN ('waiting','active','closed','timeout') |
+| assigned_admin_id | UUID | YES | — | FK → auth.users ON DELETE SET NULL |
+| queue_position | INTEGER | YES | — | |
+| last_message_at | TIMESTAMPTZ | YES | — | Trigger auto |
+| created_at | TIMESTAMPTZ | YES | now() | |
+| updated_at | TIMESTAMPTZ | YES | now() | Trigger auto |
+
+### Table `chat_messages`
+
+| Colonne | Type | Nullable | Default | Contrainte |
+|---|---|---|---|---|
+| id | UUID | NO | gen_random_uuid() | PK |
+| conversation_id | UUID | NO | — | FK → chat_conversations ON DELETE CASCADE |
+| sender_type | TEXT | NO | — | CHECK IN ('customer','admin','system') |
+| sender_id | UUID | YES | — | NULL pour les messages système |
+| message | TEXT | NO | — | |
+| created_at | TIMESTAMPTZ | YES | now() | |
+
+### Table `chat_agents`
+
+| Colonne | Type | Nullable | Default | Contrainte |
+|---|---|---|---|---|
+| id | UUID | NO | gen_random_uuid() | PK |
+| user_id | UUID | NO | — | UNIQUE, FK → auth.users ON DELETE CASCADE |
+| status | TEXT | NO | 'offline' | CHECK IN ('offline','available','busy') |
+| last_seen_at | TIMESTAMPTZ | YES | now() | Heartbeat toutes les 20 s |
+| created_at | TIMESTAMPTZ | YES | now() | |
+| updated_at | TIMESTAMPTZ | YES | now() | Trigger auto |
+
 ---
 
-## 24. Database Relationships
+## 25. Database Relationships
 
 ```
 categories (1) ──< products (N)
@@ -662,11 +782,20 @@ products (1) ──< orders (N)
 
 auth.users (1) ── profiles (1)
   id               id [CASCADE DELETE]
+
+auth.users (1) ──< chat_conversations (N)
+  id               customer_user_id [CASCADE DELETE]
+
+chat_conversations (1) ──< chat_messages (N)
+  id                        conversation_id [CASCADE DELETE]
+
+auth.users (1) ── chat_agents (1)
+  id               user_id [CASCADE DELETE]
 ```
 
 ---
 
-## 25. Installation
+## 26. Installation
 
 ```bash
 # 1. Cloner le projet
@@ -683,19 +812,21 @@ cp .env.example .env
 
 ---
 
-## 26. Configuration Locale
+## 27. Configuration Locale
 
 ### Supabase
 
 1. Créer un projet sur [supabase.com](https://supabase.com)
 2. Dans **SQL Editor**, exécuter `supabase-setup.sql`
 3. Dans **SQL Editor**, exécuter `supabase-orders.sql`
-4. Créer manuellement la table `product_videos` (voir section 23)
-5. Dans **Storage**, créer les buckets `product-images` et `product-videos` (Public)
-6. Configurer les policies Storage (voir section 9)
-7. Dans **Authentication > Users**, créer un utilisateur admin
-8. Exécuter : `UPDATE profiles SET role = 'admin' WHERE email = 'admin@example.com';`
-9. Récupérer **Project URL** et **anon key** depuis **Settings > API**
+4. Dans **SQL Editor**, exécuter `supabase-chat.sql`
+5. Créer manuellement la table `product_videos` (voir section 24) si absente de `supabase-setup.sql`
+6. Dans **Storage**, créer les buckets `product-images` et `product-videos` (Public)
+7. Configurer les policies Storage (voir section 9)
+8. Dans **Authentication**, activer **Anonymous Sign-ins** (requis pour le chat client)
+9. Dans **Authentication > Users**, créer un utilisateur admin
+10. Exécuter : `UPDATE profiles SET role = 'admin' WHERE email = 'admin@example.com';`
+11. Récupérer **Project URL** et **anon key** depuis **Settings > API**
 
 ### Variables d'environnement
 
@@ -706,7 +837,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY=eyJ...votre-anon-key...
 
 ---
 
-## 27. Development
+## 28. Development
 
 ```bash
 npm run dev
@@ -715,7 +846,7 @@ npm run dev
 
 ---
 
-## 28. Build
+## 29. Build
 
 ```bash
 npm run build
@@ -727,7 +858,7 @@ npm run preview
 
 ---
 
-## 29. Deployment
+## 30. Deployment
 
 Le déploiement est automatique via GitHub Actions sur chaque push sur `main`.
 
@@ -741,7 +872,7 @@ Le déploiement est automatique via GitHub Actions sur chaque push sur `main`.
 
 ---
 
-## 30. GitHub Actions
+## 31. GitHub Actions
 
 **Fichier :** `.github/workflows/deploy.yml`
 
@@ -753,20 +884,20 @@ on:
 
 jobs:
   build:
-    - actions/checkout@v4
-    - actions/setup-node@v4 (Node 20, cache npm)
+    - actions/checkout@v7
+    - actions/setup-node@v7 (Node 24, cache npm)
     - npm ci
     - npm run build (avec VITE_SUPABASE_URL + VITE_SUPABASE_PUBLISHABLE_KEY)
-    - actions/configure-pages@v5
-    - actions/upload-pages-artifact@v3 (path: ./dist)
+    - actions/configure-pages@v6
+    - actions/upload-pages-artifact@v5 (path: ./dist)
 
   deploy:
-    - actions/deploy-pages@v4
+    - actions/deploy-pages@v5
 ```
 
 ---
 
-## 31. GitHub Pages
+## 32. GitHub Pages
 
 **Configuration requise dans GitHub :**
 - Settings > Pages > Source : **GitHub Actions**
@@ -782,7 +913,7 @@ jobs:
 
 ---
 
-## 32. Security
+## 33. Security
 
 ### Points forts
 - RLS activée sur toutes les tables
@@ -804,7 +935,7 @@ jobs:
 
 ---
 
-## 33. Troubleshooting
+## 34. Troubleshooting
 
 **Page blanche après déploiement GitHub Pages**
 → Vérifier que `base: '/nova-shop/'` est dans `vite.config.ts`  
@@ -832,10 +963,9 @@ jobs:
 
 ---
 
-## 34. Known Limitations
+## 35. Known Limitations
 
 - Pas de recherche full-text avancée (utilise `ilike` sur name_fr et name_ar)
-- Pas de notifications en temps réel pour les nouvelles commandes
 - Pas de système de paiement en ligne
 - Pas de gestion de stock quantitatif (seulement disponible/indisponible)
 - Export Excel charge toutes les commandes filtrées en mémoire
@@ -843,37 +973,41 @@ jobs:
 - `ProtectedRoute` ne vérifie pas le rôle admin
 - Copyright année statique (`2024`) dans les traductions
 - `product_videos` absent du script SQL de setup
+- Session chat perdue à la fermeture de l'onglet (sessionStorage)
+- Si l'admin ferme l'onglet sans cliquer "Hors ligne", le statut reste actif jusqu'à expiration 2 min
 
 ---
 
-## 35. Future Improvements
+## 36. Future Improvements
 
 - Ajouter `product_videos` dans `supabase-setup.sql`
 - Corriger `.env.example` (VITE_ au lieu de NEXT_PUBLIC_)
 - Vérification du rôle admin dans `ProtectedRoute`
 - Numéro WhatsApp en variable d'environnement (`VITE_WHATSAPP_NUMBER`)
 - Meta OG dynamiques par produit (via `react-helmet-async`)
-- Notifications Supabase Realtime pour nouvelles commandes
+- Notifications sonores/badge onglet pour nouvelles conversations en attente
 - Pagination côté serveur pour les produits
 - Gestion de stock quantitatif
 - Système de favoris côté client
 - Statistiques de ventes avancées dans le dashboard
+- Transfert de conversation entre agents admin
+- Pièces jointes dans le chat (images depuis le catalogue)
+- Évaluation client à la fermeture de conversation
 
 ---
 
-## 36. Development with WebStorm
+## 37. Development with WebStorm
 
 ### Prérequis
 
 | Outil | Version recommandée | Notes |
 |---|---|---|
 | JetBrains WebStorm | 2024.x ou supérieur | IDE principal |
-| Node.js | 20.x (LTS) | Aligné avec GitHub Actions |
-| npm | 10.x ou supérieur | Inclus avec Node.js 20 |
+| Node.js | 24.x (LTS) | Aligné avec GitHub Actions |
+| npm | 10.x ou supérieur | Inclus avec Node.js 24 |
 | Git | Toute version récente | Contrôle de version |
 
-**Node.js local détecté :** v22.14.0 (compatible — Node 20 est la version de référence CI)  
-**Fichier `.nvmrc` :** `20` (version de référence GitHub Actions)
+**Fichier `.nvmrc` :** `24` (version de référence GitHub Actions)
 
 ---
 

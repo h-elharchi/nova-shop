@@ -1,9 +1,9 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Package, PlusCircle, Tag, LogOut, ShoppingBag, Menu, ShoppingCart, Sun, Moon, MessageSquare } from 'lucide-react'
+import { LayoutDashboard, Package, PlusCircle, Tag, LogOut, ShoppingBag, Menu, ShoppingCart, Sun, Moon, MessageSquare, Users, UserCircle } from 'lucide-react'
 import { useState } from 'react'
 import { useI18n } from '../../context/LanguageContext'
 import { useThemeCtx } from '../../context/ThemeContext'
-import { useAuth } from '../../hooks/useAuth'
+import { useStaffAuth } from '../../hooks/useStaffAuth'
 import { useChatPresence } from '../../hooks/useChatPresence'
 
 interface AdminLayoutProps {
@@ -13,7 +13,7 @@ interface AdminLayoutProps {
 export function AdminLayout({ children }: AdminLayoutProps) {
   const { t } = useI18n()
   const { isDark, toggleTheme } = useThemeCtx()
-  const { signOut, user } = useAuth()
+  const { signOut, user, profile, isAdmin } = useStaffAuth()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { waitingCount } = useChatPresence(user?.id ?? null)
@@ -23,14 +23,34 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     navigate('/admin/login')
   }
 
-  const navItems = [
-    { to: '/admin', icon: <LayoutDashboard className="w-5 h-5" />, label: t('admin.dashboard'), end: true, badge: 0 },
-    { to: '/admin/products', icon: <Package className="w-5 h-5" />, label: t('admin.products'), badge: 0 },
-    { to: '/admin/products/new', icon: <PlusCircle className="w-5 h-5" />, label: t('admin.add_product'), badge: 0 },
-    { to: '/admin/categories', icon: <Tag className="w-5 h-5" />, label: t('admin.categories'), badge: 0 },
-    { to: '/admin/orders', icon: <ShoppingCart className="w-5 h-5" />, label: t('order.orders'), badge: 0 },
-    { to: '/admin/chat', icon: <MessageSquare className="w-5 h-5" />, label: t('chat.admin_title'), badge: waitingCount },
+  const displayName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.email || user?.email || ''
+  const initials = displayName
+    .split(' ')
+    .map(w => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase()
+
+  type NavItem = {
+    to: string
+    icon: React.ReactNode
+    label: string
+    end?: boolean
+    badge?: number
+    adminOnly?: boolean
+  }
+
+  const navItems: NavItem[] = [
+    { to: '/admin',              icon: <LayoutDashboard className="w-5 h-5" />, label: t('admin.dashboard'),   end: true  },
+    { to: '/admin/chat',         icon: <MessageSquare   className="w-5 h-5" />, label: t('chat.admin_title'), badge: waitingCount },
+    { to: '/admin/orders',       icon: <ShoppingCart    className="w-5 h-5" />, label: t('order.orders')      },
+    { to: '/admin/products',     icon: <Package         className="w-5 h-5" />, label: t('admin.products'),    adminOnly: true },
+    { to: '/admin/products/new', icon: <PlusCircle      className="w-5 h-5" />, label: t('admin.add_product'), adminOnly: true },
+    { to: '/admin/categories',   icon: <Tag             className="w-5 h-5" />, label: t('admin.categories'),  adminOnly: true },
+    { to: '/admin/users',        icon: <Users           className="w-5 h-5" />, label: t('admin.users'),       adminOnly: true },
   ]
+
+  const visibleItems = navItems.filter(item => !item.adminOnly || isAdmin)
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
@@ -39,10 +59,13 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           <ShoppingBag className="w-7 h-7 text-blue-600 dark:text-blue-400" />
           <span className="font-bold text-gray-900 dark:text-white">NOVA SHOP</span>
         </Link>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Admin</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+          {isAdmin ? t('admin.role_admin') : t('admin.role_agent')}
+        </p>
       </div>
+
       <nav className="flex-1 p-4 space-y-1">
-        {navItems.map(item => (
+        {visibleItems.map(item => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -58,7 +81,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           >
             {item.icon}
             {item.label}
-            {item.badge > 0 && (
+            {(item.badge ?? 0) > 0 && (
               <span className="ml-auto inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full">
                 {item.badge}
               </span>
@@ -66,8 +89,29 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           </NavLink>
         ))}
       </nav>
+
       <div className="p-4 border-t border-gray-100 dark:border-dark-border space-y-1">
-        {/* Theme toggle */}
+        {/* Mon compte */}
+        <NavLink
+          to="/admin/account"
+          onClick={() => setSidebarOpen(false)}
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+              isActive
+                ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
+                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white'
+            }`
+          }
+        >
+          {profile?.avatar_url ? (
+            <img src={profile.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" />
+          ) : (
+            <UserCircle className="w-5 h-5" />
+          )}
+          <span className="truncate">{displayName || t('admin.my_account')}</span>
+        </NavLink>
+
+        {/* Thème */}
         <button
           onClick={toggleTheme}
           aria-label={isDark ? t('common.light_mode') : t('common.dark_mode')}
@@ -76,6 +120,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
           {isDark ? t('common.light_mode') : t('common.dark_mode')}
         </button>
+
+        {/* Déconnexion */}
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
@@ -89,12 +135,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-dark-bg flex transition-colors duration-200">
-      {/* Desktop sidebar */}
+      {/* Sidebar desktop */}
       <aside className="hidden md:flex flex-col w-64 bg-white dark:bg-dark-surface border-r border-gray-100 dark:border-dark-border fixed inset-y-0 transition-colors duration-200">
         <SidebarContent />
       </aside>
 
-      {/* Mobile sidebar overlay */}
+      {/* Sidebar mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
@@ -104,9 +150,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         </div>
       )}
 
-      {/* Main content */}
+      {/* Contenu principal */}
       <div className="flex-1 md:ml-64">
-        {/* Mobile header */}
+        {/* Header mobile */}
         <header className="md:hidden bg-white dark:bg-dark-surface border-b border-gray-100 dark:border-dark-border px-4 py-3 flex items-center gap-3 transition-colors duration-200">
           <button
             onClick={() => setSidebarOpen(true)}
@@ -115,7 +161,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             <Menu className="w-5 h-5" />
           </button>
           <span className="font-semibold text-gray-900 dark:text-white">NOVA SHOP Admin</span>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
             <button
               onClick={toggleTheme}
               aria-label={isDark ? t('common.light_mode') : t('common.dark_mode')}
@@ -123,6 +169,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             >
               {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
+            {/* Avatar mobile */}
+            <Link to="/admin/account" className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center overflow-hidden">
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-xs font-bold text-blue-600 dark:text-blue-400">{initials || '?'}</span>
+              )}
+            </Link>
           </div>
         </header>
         <main className="p-6">

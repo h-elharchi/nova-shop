@@ -49,10 +49,24 @@ export interface Product {
   videos?: ProductVideo[]
 }
 
+export type StaffRole = 'admin' | 'agent'
+
 export interface AdminUser {
   id: string
   email: string
-  role: 'admin' | 'user'
+  role: 'admin' | 'agent' | 'user'
+}
+
+export interface StaffProfile {
+  id: string
+  email: string
+  role: StaffRole
+  first_name: string | null
+  last_name: string | null
+  avatar_url: string | null
+  is_active: boolean
+  last_login_at: string | null
+  created_at: string
 }
 
 export interface ProductFilters {

@@ -21,6 +21,7 @@ Les clients commandent via WhatsApp ou via un formulaire en ligne. L'admin gère
 - Administration sécurisée (produits, catégories, commandes)
 - Déploiement statique sur GitHub Pages (aucun serveur backend)
 - Prise de commande sans système de paiement en ligne (paiement à la livraison)
+- Chat en temps réel client ↔ admin avec file d'attente et présence agent (Supabase Realtime)
 
 ---
 
@@ -30,16 +31,17 @@ Les clients commandent via WhatsApp ou via un formulaire en ligne. L'admin gère
 Frontend (React SPA)
       │
       ├── Supabase JS Client
-      │       ├── Supabase Auth (email/password)
+      │       ├── Supabase Auth (email/password admin + signInAnonymously client)
       │       ├── Supabase Database (PostgreSQL)
-      │       └── Supabase Storage (product-images, product-videos)
+      │       ├── Supabase Storage (product-images, product-videos)
+      │       └── Supabase Realtime (chat_messages, chat_conversations, chat_agents)
       │
       └── WhatsApp API (wa.me — lien external)
 
 Build → dist/  →  GitHub Actions  →  GitHub Pages
 ```
 
-**Pas de backend custom.** Toute la logique serveur est gérée par Supabase (RLS, triggers, fonctions SQL).
+**Pas de backend custom.** Toute la logique serveur est gérée par Supabase (RLS, triggers, fonctions SQL, Realtime).
 
 ---
 
@@ -75,6 +77,7 @@ nova-shop/
 ├── postcss.config.js             # tailwindcss + autoprefixer
 ├── supabase-setup.sql            # SQL: tables categories/products/product_images/profiles + RLS
 ├── supabase-orders.sql           # SQL: table orders + RLS
+├── supabase-chat.sql             # SQL: tables chat_conversations/chat_messages/chat_agents + RLS + fonctions
 │
 ├── public/
 │   ├── favicon.ico / .svg / .png # Favicons multi-formats
@@ -87,8 +90,10 @@ nova-shop/
     ├── index.css                 # Tailwind directives, RTL font, dark mode body
     ├── vite-env.d.ts             # Types Vite
     │
-    ├── types/index.ts            # Tous les types TypeScript du projet
-    ├── i18n/translations.ts      # Traductions FR + AR (objet const unique)
+    ├── types/
+    │   ├── index.ts              # Types e-commerce (Product, Category, Order, Profile…)
+    │   └── chat.ts               # Types chat (ChatConversation, ChatMessage, ChatAgent, états…)
+    ├── i18n/translations.ts      # Traductions FR + AR — inclut section chat.*
     │
     ├── context/
     │   ├── LanguageContext.ts    # Context React + hook useI18n()
@@ -101,12 +106,16 @@ nova-shop/
     │   ├── useCategories.ts      # SELECT categories WHERE is_active=true
     │   ├── useProducts.ts        # SELECT products + category + images, avec filtres
     │   ├── useProduct.ts         # SELECT produit unique par slug + images + vidéos
-    │   └── useOrders.ts          # useCreateOrder, useOrders (admin), useOrderStats
+    │   ├── useOrders.ts          # useCreateOrder, useOrders (admin), useOrderStats
+    │   ├── useChat.ts            # Machine d'état chat client (idle→form→connecting→active…)
+    │   ├── useChatMessages.ts    # Chargement + Realtime messages d'une conversation
+    │   └── useChatPresence.ts    # Présence admin (statut, heartbeat), useAdminConversations
     │
     ├── lib/
     │   ├── supabase.ts           # createClient(VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY)
     │   ├── whatsapp.ts           # WHATSAPP_NUMBER hardcodé, buildWhatsAppUrl, getOrderMessage
-    │   └── exportExcel.ts        # Export XLSX via librairie xlsx
+    │   ├── exportExcel.ts        # Export XLSX via librairie xlsx
+    │   └── chat.ts               # ensureAnonAuth, createConversation, sendMessage, claimConversation, RPCs…
     │
     ├── components/
     │   ├── layout/
@@ -119,9 +128,19 @@ nova-shop/
     │   ├── orders/
     │   │   ├── OrderModal.tsx    # Modal commande (prénom, nom, téléphone marocain)
     │   │   └── OrderStatusBadge.tsx # Badge coloré selon statut
-    │   └── whatsapp/
-    │       ├── WhatsAppButton.tsx # Bouton WhatsApp avec message optionnel
-    │       └── WhatsAppFloat.tsx  # Bouton flottant mobile uniquement (md:hidden)
+    │   ├── whatsapp/
+    │   │   ├── WhatsAppButton.tsx # Bouton WhatsApp avec message optionnel
+    │   │   └── WhatsAppFloat.tsx  # Bouton flottant mobile (bottom-20 right-4, md:hidden)
+    │   └── chat/
+    │       ├── ChatButton.tsx     # Bouton flottant bleu + conteneur du widget
+    │       ├── ChatWidget.tsx     # Shell du widget (dimensions responsives, routing états)
+    │       ├── ChatHeader.tsx     # Barre bleue avec dot statut, minimize, close
+    │       ├── ChatCustomerForm.tsx # Formulaire prénom/nom/téléphone + validation
+    │       ├── ChatQueueStatus.tsx  # Spinner countdown (searching) ou position file (waiting)
+    │       ├── ChatClosedMessage.tsx # Écran fin de conversation (closed/timeout)
+    │       ├── ChatMessage.tsx    # Bulle message (customer droite, admin gauche, système centré)
+    │       ├── ChatInput.tsx      # Textarea auto-hauteur, Enter envoie, Shift+Enter newline
+    │       └── ChatWindow.tsx     # Conteneur messages + input, toujours sender_type='customer'
     │
     └── pages/
         ├── Home/index.tsx         # Accueil: hero, nouveautés, populaires, catégories, CTA
@@ -129,16 +148,17 @@ nova-shop/
         ├── ProductDetails/index.tsx # Détail produit, galerie images+vidéos, modal commande
         ├── Categories/index.tsx   # Grille catégories
         ├── Categories/CategoryPage.tsx # Produits d'une catégorie par slug
-        ├── Contact/index.tsx      # Page contact WhatsApp
+        ├── Contact/index.tsx      # Page contact WhatsApp + option démarrer le chat
         └── Admin/
             ├── LoginPage.tsx      # Formulaire connexion Supabase Auth
             ├── ProtectedRoute.tsx # Vérifie session active (useAuth)
-            ├── AdminLayout.tsx    # Sidebar admin, navigation, dark mode toggle
+            ├── AdminLayout.tsx    # Sidebar admin + badge waitingCount chat
             ├── DashboardPage.tsx  # Stats produits + stats commandes + dernières commandes
             ├── ProductsPage.tsx   # Liste produits admin (toggle actif, suppression)
             ├── ProductFormPage.tsx # Formulaire ajout/édition produit + upload images/vidéos
             ├── CategoriesPage.tsx # CRUD catégories (modal inline)
-            └── OrdersPage.tsx     # Gestion commandes (filtres, statuts, export Excel)
+            ├── OrdersPage.tsx     # Gestion commandes (filtres, statuts, export Excel)
+            └── ChatPage.tsx       # Interface admin chat (statut agent, file, actif, historique)
 ```
 
 ---
@@ -170,6 +190,7 @@ Routes définies :
 | `/admin/products/:id/edit` | ProductFormPage | Oui |
 | `/admin/categories` | AdminCategoriesPage | Oui |
 | `/admin/orders` | AdminOrdersPage | Oui |
+| `/admin/chat` | AdminChatPage | Oui |
 | `*` | Redirect `/` | — |
 
 ---
@@ -216,6 +237,9 @@ Le client est un singleton exporté, utilisé dans tous les hooks.
 | `product_videos` | Vidéos associées aux produits (URL Supabase Storage) |
 | `profiles` | Profils utilisateurs liés à `auth.users` (rôle admin/user) |
 | `orders` | Commandes clients |
+| `chat_conversations` | Conversations client ↔ admin (statut, file d'attente, agent assigné) |
+| `chat_messages` | Messages d'une conversation (customer / admin / system) |
+| `chat_agents` | Présence et statut des agents admin (offline / available / busy) |
 
 ### Relations
 
@@ -225,7 +249,29 @@ products   (1) ──< product_images (N)
 products   (1) ──< product_videos (N)
 auth.users (1) ──  profiles (1)
 products   (1) ──< orders (N)
+auth.users (1) ──< chat_conversations (N)   [customer_user_id — auth anonyme]
+chat_conversations (1) ──< chat_messages (N)
+auth.users (1) ──  chat_agents (1)          [user_id — admin]
 ```
+
+### Authentification anonyme (chat client)
+
+Les clients du chat s'authentifient via `supabase.auth.signInAnonymously()` avant de créer une conversation. Cette session anonyme est persistée dans `sessionStorage` (`nova-chat-session`) pour permettre la reprise de session.
+
+**Pourquoi :** La RLS de `chat_conversations` et `chat_messages` utilise `auth.uid()` pour isoler chaque client — un client ne peut jamais lire les conversations d'un autre.
+
+### Supabase Realtime
+
+Les 3 tables chat sont publiées dans la publication Realtime :
+```sql
+ALTER PUBLICATION supabase_realtime ADD TABLE chat_conversations;
+ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
+ALTER PUBLICATION supabase_realtime ADD TABLE chat_agents;
+```
+
+**Règle impérative sur les noms de canaux :** Chaque instance de hook doit utiliser un nom de canal **unique** (suffix `instanceId = Date.now() + random`). Réutiliser le même nom retourne le canal déjà souscrit → erreur "cannot add postgres_changes callbacks after subscribe()".
+
+Hooks concernés : `useChatPresence` (canal `agents-{id}`, `waiting-conv-{id}`), `useChatMessages` (canal `msgs-{convId}-{timestamp}`).
 
 ---
 
@@ -306,6 +352,41 @@ updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 
 Index sur `orders` : `product_id`, `status`, `created_at DESC`, `customer_phone`
 
+### Table `chat_conversations`
+```sql
+id                   UUID PK DEFAULT gen_random_uuid()
+customer_user_id     UUID FK → auth.users(id) ON DELETE CASCADE  -- session anonyme
+customer_first_name  TEXT NOT NULL
+customer_last_name   TEXT NOT NULL
+customer_phone       TEXT NOT NULL
+status               TEXT DEFAULT 'waiting' CHECK (status IN ('waiting','active','closed','timeout'))
+assigned_admin_id    UUID FK → auth.users(id) ON DELETE SET NULL (nullable)
+queue_position       INTEGER (nullable)
+last_message_at      TIMESTAMPTZ (nullable)
+created_at           TIMESTAMPTZ DEFAULT now()
+updated_at           TIMESTAMPTZ DEFAULT now()
+```
+
+### Table `chat_messages`
+```sql
+id               UUID PK DEFAULT gen_random_uuid()
+conversation_id  UUID FK → chat_conversations(id) ON DELETE CASCADE
+sender_type      TEXT NOT NULL CHECK (sender_type IN ('customer','admin','system'))
+sender_id        UUID (nullable)  -- NULL pour system
+message          TEXT NOT NULL
+created_at       TIMESTAMPTZ DEFAULT now()
+```
+
+### Table `chat_agents`
+```sql
+id           UUID PK DEFAULT gen_random_uuid()
+user_id      UUID UNIQUE FK → auth.users(id) ON DELETE CASCADE
+status       TEXT DEFAULT 'offline' CHECK (status IN ('offline','available','busy'))
+last_seen_at TIMESTAMPTZ DEFAULT now()
+created_at   TIMESTAMPTZ DEFAULT now()
+updated_at   TIMESTAMPTZ DEFAULT now()
+```
+
 ---
 
 ## 10. Triggers et Fonctions SQL
@@ -330,6 +411,24 @@ $$ LANGUAGE sql SECURITY DEFINER;
 ```
 Utilisée dans toutes les policies RLS pour les opérations admin.
 
+### Triggers chat
+- `chat_conversations_updated_at` → `update_updated_at()` — met à jour `updated_at`
+- `chat_agents_updated_at` → `update_updated_at()` — idem
+- `chat_messages_update_conversation` → `update_conversation_last_message()` — met à jour `last_message_at` de la conversation à chaque INSERT dans `chat_messages`
+- `recalculate_queue_trigger` → `recalculate_queue_positions()` — recalcule les `queue_position` quand une conversation change de statut
+
+### Fonctions SQL chat (fichier `supabase-chat.sql`)
+
+| Fonction | Description |
+|---|---|
+| `ensure_chat_agent()` | Crée l'entrée `chat_agents` pour l'admin si elle n'existe pas |
+| `update_agent_heartbeat(p_status TEXT DEFAULT NULL)` | Met à jour `last_seen_at` (et `status` si fourni) de l'agent courant |
+| `claim_conversation(p_conversation_id UUID)` | Réserve atomiquement une conversation en attente via `FOR UPDATE SKIP LOCKED`, la passe en `active`, insère un message système `conversation_started`, retourne la conversation mise à jour |
+| `close_conversation(p_conversation_id UUID)` | Passe la conversation en `closed`, libère `queue_position` |
+| `assign_to_available_admin(p_conversation_id UUID)` | Cherche un agent `available` et lui assigne la conversation |
+| `timeout_conversation(p_conversation_id UUID)` | Passe la conversation en `timeout` |
+| `check_agents_online()` | Retourne `(available_count INT, busy_count INT)` — agents avec `last_seen_at` < 2 min |
+
 ---
 
 ## 11. RLS (Row Level Security)
@@ -343,8 +442,13 @@ Toutes les tables ont RLS activé.
 | `product_images` | SELECT (toutes) | FULL (ALL) |
 | `orders` | INSERT (créer une commande) | FULL (ALL) |
 | `profiles` | SELECT (propre profil) | SELECT (tous) |
+| `chat_conversations` | SELECT/INSERT WHERE customer_user_id = auth.uid() | FULL (ALL) |
+| `chat_messages` | SELECT/INSERT WHERE conversation appartient à auth.uid() | FULL (ALL) |
+| `chat_agents` | — | FULL (ALL) |
 
 **Note :** La table `product_videos` doit avoir des policies RLS similaires à `product_images`.
+
+**Règle de sécurité chat :** Un client ne peut jamais lire les conversations d'un autre client. Le filtre RLS `customer_user_id = auth.uid()` sur `chat_conversations` et une sous-requête équivalente sur `chat_messages` garantissent l'isolation complète. Ne jamais créer de policy `WITH CHECK (true)` sans vérification sur ces tables.
 
 ---
 
@@ -428,6 +532,36 @@ Client → WhatsAppButton.onClick()
        → getOrderMessage(productName, lang)
        → window.open('https://wa.me/212606732531?text=...')
        → Application WhatsApp
+```
+
+### Flux chat client (widget)
+```
+Client → ChatButton → openWidget() → widgetState: 'form'
+       → saisie prénom/nom/téléphone → startChat()
+           → ensureAnonAuth() [signInAnonymously si pas de session]
+           → createConversation() → INSERT chat_conversations
+           → assignToAvailableAdmin() → RPC assign_to_available_admin
+               [admin dispo] → widgetState: 'active' → ChatWindow
+               [admins occupés] → widgetState: 'waiting' → file d'attente
+               [aucun admin] → widgetState: 'searching' → countdown 30s
+                   [admin se connecte] → agent watch channel → assign → 'active'
+                   [timeout] → timeoutConversation() → widgetState: 'timeout'
+       → [actif] send() → INSERT chat_messages (sender_type='customer')
+       → [fermer] → widgetState: 'closed'
+```
+
+### Flux chat admin (ChatPage)
+```
+Admin → /admin/chat → AdminChatPage
+      → useChatPresence(adminId) → ensureChatAgent() → canal Realtime agents
+      → setStatus('available') → updateAgentHeartbeat + heartbeat toutes 20s
+      → tabs: file d'attente | actif | historique
+      → [prendre conversation] → claimConversation() → RPC claim_conversation
+          [FOR UPDATE SKIP LOCKED — protection race condition]
+          → conversation passe 'active' + message système 'conversation_started'
+      → useChatMessages(selectedConv.id) → load + canal Realtime messages
+      → send(text, 'admin', user.id) → INSERT chat_messages (sender_type='admin')
+      → [terminer] → closeConversation() → RPC close_conversation → 'closed'
 ```
 
 ---
@@ -527,13 +661,13 @@ dark: { bg: '#0F1115', surface: '#171A21', card: '#1E222B', border: '#252B38' }
 **Déclenchement :** Push sur `main` ou `workflow_dispatch`
 
 **Pipeline :**
-1. Checkout code (actions/checkout@v4)
-2. Setup Node.js 20 (actions/setup-node@v4 avec cache npm)
+1. Checkout code (actions/checkout@v7)
+2. Setup Node.js 24 (actions/setup-node@v7 avec cache npm)
 3. `npm ci`
 4. `npm run build` avec secrets `VITE_SUPABASE_URL` et `VITE_SUPABASE_PUBLISHABLE_KEY`
-5. actions/configure-pages@v5
-6. Upload artifact `./dist`
-7. Deploy sur GitHub Pages (actions/deploy-pages@v4)
+5. actions/configure-pages@v6
+6. Upload artifact `./dist` (actions/upload-pages-artifact@v5)
+7. Deploy sur GitHub Pages (actions/deploy-pages@v5)
 
 **URL de déploiement :** `https://<USERNAME>.github.io/nova-shop/`
 
@@ -581,6 +715,8 @@ npm run lint         # Lancer ESLint
 5. **RTL préservé** — Tout changement UI doit tester FR et AR
 6. **Dark mode préservé** — Chaque nouveau composant doit avoir ses variantes `dark:`
 7. **Pas de build cassé** — Toujours vérifier `npm run build` après modifications importantes
+8. **Noms de canaux Realtime uniques** — Chaque instance de hook qui souscrit à Supabase Realtime DOIT utiliser un nom de canal unique (suffixe `instanceId` généré à la création du hook). Ne jamais réutiliser un nom statique partagé entre plusieurs instances du même hook.
+9. **Isolation RLS chat** — Ne jamais accorder SELECT global sur `chat_conversations` ou `chat_messages` à l'anon role. La policy doit toujours filtrer sur `customer_user_id = auth.uid()`.
 
 ---
 
@@ -600,6 +736,12 @@ npm run lint         # Lancer ESLint
 
 7. **Copyright footer** : `© 2024 NOVA SHOP` — date statique dans les traductions.
 
+8. **`supabase-chat.sql` doit être exécuté manuellement** dans Supabase SQL Editor. La table `product_videos` (même problème) n'est pas dans `supabase-setup.sql`.
+
+9. **Heartbeat admin** : si l'onglet est fermé sans clic sur "Hors ligne", l'agent reste `available` en base jusqu'à expiration (`last_seen_at` > 2 min). `check_agents_online()` filtre sur cette fenêtre de 2 min.
+
+10. **Session chat client** dans `sessionStorage` (clé `nova-chat-session`) — perdue à la fermeture de l'onglet. C'est voulu : une nouvelle session = un nouvel utilisateur anonyme.
+
 ---
 
 ## 26. Améliorations Futures Possibles
@@ -611,11 +753,83 @@ npm run lint         # Lancer ESLint
 - Supprimer `react-helmet-async` si non utilisé ou l'utiliser pour le SEO
 - Ajouter des meta OG dynamiques par page produit
 - Pagination côté serveur pour les produits
-- Notifications en temps réel pour les nouvelles commandes (Supabase Realtime)
+- Notifications sonores/visuelles (badge onglet) pour nouvelles conversations en attente
+- Transfert de conversation entre agents admin
+- Historique de chat côté client après fermeture et réouverture
+- Pièces jointes dans le chat (images produit depuis le catalogue)
+- Évaluation de la conversation (satisfaction client) à la fermeture
 
 ---
 
-## 27. Règles pour Claude Code
+## 27. Module Chat — Référence Rapide
+
+### États du widget client (`ChatWidgetState`)
+
+```
+idle → form → connecting → active
+                         → searching → active (agent trouvé)
+                                     → timeout (30s dépassé)
+                         → waiting   → active (admin prend la conv)
+active → closed
+       → timeout
+```
+
+### États agent admin (`ChatAgentStatus`)
+`offline` | `available` | `busy`
+
+### Machine d'état `useChat.ts`
+
+| Transition | Déclencheur |
+|---|---|
+| `idle → form` | `openWidget()` |
+| `form → connecting` | `startChat(formData)` |
+| `connecting → active` | `assignToAvailableAdmin()` retourne true |
+| `connecting → searching` | aucun admin en ligne → countdown 30s |
+| `connecting → waiting` | admins en ligne mais tous occupés |
+| `searching → active` | agent se connecte pendant countdown |
+| `searching → timeout` | countdown atteint 0 |
+| `waiting → active` | subscription UPDATE on conv → status='active' |
+| `active → closed` | subscription UPDATE on conv → status='closed' |
+| `* → idle` | `resetToIdle()` |
+
+### Pattern cleanup Realtime (à reproduire dans tout nouveau hook)
+
+```typescript
+const instanceId = useRef(`${Date.now()}-${Math.random().toString(36).slice(2,7)}`)
+
+useEffect(() => {
+  let cancelled = false
+  const channel = supabase
+    .channel(`nom-${instanceId.current}`)  // nom unique par instance
+    .on('postgres_changes', { ... }, handler)
+    .subscribe()
+  channelRef.current = channel
+
+  return () => {
+    cancelled = true
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current)
+      channelRef.current = null
+    }
+  }
+}, [dep])
+```
+
+### Sécurité RLS chat — règles immuables
+
+1. `chat_conversations` INSERT : `WITH CHECK (customer_user_id = auth.uid())`
+2. `chat_conversations` SELECT client : `USING (customer_user_id = auth.uid())`
+3. `chat_messages` SELECT/INSERT client : sous-requête vérifiant que la conversation appartient à `auth.uid()`
+4. `chat_agents` : réservé aux admins uniquement (`is_admin()`)
+
+### Traductions chat (`src/i18n/translations.ts`)
+
+Toutes les clés chat sont sous le préfixe `chat.*` (environ 40 clés, FR + AR). Exemples :
+`chat.btn_label`, `chat.form_title`, `chat.searching`, `chat.waiting`, `chat.admin_title`, `chat.admin_take`, `chat.admin_end`, etc.
+
+---
+
+## 29. Règles pour Claude Code
 
 **Avant toute modification :**
 1. Toujours relire le fichier concerné avec Read avant de l'éditer
@@ -646,7 +860,7 @@ npm run lint         # Lancer ESLint
 
 ---
 
-## 28. Development Environment
+## 30. Development Environment
 
 ### IDE Principal
 
@@ -662,8 +876,8 @@ Le projet est configuré pour WebStorm :
 
 | Outil | Version de référence | Notes |
 |---|---|---|
-| Node.js | 20 (LTS) | Défini dans `.nvmrc` et GitHub Actions |
-| npm | 10.x+ | Inclus avec Node 20 |
+| Node.js | 24 (LTS) | Défini dans `.nvmrc` et GitHub Actions |
+| npm | 10.x+ | Inclus avec Node 24 |
 | TypeScript | ^5.5.3 | Défini dans `package.json` |
 | Vite | ^5.4.1 | Build tool + dev server |
 | ESLint | ^9.9.0 | Flat config (`eslint.config.js`) |
@@ -689,7 +903,7 @@ WebStorm (édition code)
 GitHub (repository distant — branch main)
   ↓  déclenchement automatique
 GitHub Actions (.github/workflows/deploy.yml)
-  ↓  npm ci  +  npm run build  (Node 20, secrets injectés)
+  ↓  npm ci  +  npm run build  (Node 24, secrets injectés)
 GitHub Pages
   ↓
 https://<USERNAME>.github.io/nova-shop/
