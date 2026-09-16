@@ -218,7 +218,7 @@ export function AdminUsersPage() {
         )}
 
         {/* Liste des utilisateurs */}
-        <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border overflow-hidden">
+        <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border">
           {loading ? (
             <div className="flex justify-center py-12">
               <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -275,34 +275,39 @@ export function AdminUsersPage() {
                           <>
                             <button
                               onClick={() => setMenuOpen(menuOpen === u.id ? null : u.id)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                              className={`p-1.5 rounded-lg transition-colors ${
+                                menuOpen === u.id
+                                  ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                                  : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                              }`}
                             >
                               <MoreVertical className="w-4 h-4" />
                             </button>
 
                             {menuOpen === u.id && (
-                              <div className="absolute right-4 top-10 z-10 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-lg py-1 min-w-40">
+                              <div className="absolute right-4 bottom-full mb-1 z-20 bg-white dark:bg-dark-card border border-gray-200 dark:border-dark-border rounded-xl shadow-xl py-1 min-w-44">
                                 {/* Changer le rôle */}
                                 {u.role !== 'admin' && (
                                   <button
                                     onClick={() => handleChangeRole(u, 'admin')}
-                                    className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                                    className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700/60 transition-colors"
                                   >
-                                    → {t('admin.role_admin')}
+                                    {t('users.make_admin')}
                                   </button>
                                 )}
                                 {u.role !== 'agent' && (
                                   <button
                                     onClick={() => handleChangeRole(u, 'agent')}
-                                    className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                                    className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700/60 transition-colors"
                                   >
-                                    → {t('admin.role_agent')}
+                                    {t('users.make_agent')}
                                   </button>
                                 )}
+                                <div className="my-1 border-t border-gray-100 dark:border-dark-border" />
                                 {/* Activer / Désactiver */}
                                 <button
                                   onClick={() => handleToggleActive(u)}
-                                  className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                                  className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
                                     u.is_active
                                       ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
                                       : 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
@@ -313,9 +318,9 @@ export function AdminUsersPage() {
                                 {/* Reset mot de passe */}
                                 <button
                                   onClick={() => handleResetPassword(u)}
-                                  className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
+                                  className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700/60 transition-colors flex items-center gap-2"
                                 >
-                                  <RefreshCw className="w-3 h-3" />
+                                  <RefreshCw className="w-3.5 h-3.5" />
                                   {t('users.reset_password')}
                                 </button>
                               </div>
