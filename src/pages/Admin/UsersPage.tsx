@@ -299,7 +299,7 @@ export function AdminUsersPage() {
                             </button>
 
                             {menuOpen === u.id && (
-                              <div className="absolute right-4 bottom-full mb-1 z-20 bg-white dark:bg-dark-card border border-gray-200 dark:border-dark-border rounded-xl shadow-xl py-1 min-w-44">
+                              <div className="absolute right-4 top-full mt-1 z-20 bg-white dark:bg-dark-card border border-gray-200 dark:border-dark-border rounded-xl shadow-xl py-1 min-w-44">
                                 {/* Changer le rôle */}
                                 {u.role !== 'admin' && (
                                   <button
