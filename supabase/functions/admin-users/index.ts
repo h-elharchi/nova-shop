@@ -106,7 +106,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: invited, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
         data: { role, first_name: firstName, last_name: lastName },
-        redirectTo: `${siteUrl}/#/set-password`,
+        redirectTo: siteUrl,
       })
 
       if (inviteError) return json({ error: inviteError.message }, 400)
@@ -166,7 +166,7 @@ Deno.serve(async (req: Request) => {
       const { error: resetError } = await adminClient.auth.admin.generateLink({
         type: 'recovery',
         email,
-        options: { redirectTo: `${siteUrl}/#/set-password` },
+        options: { redirectTo: siteUrl },
       })
 
       if (resetError) throw resetError
