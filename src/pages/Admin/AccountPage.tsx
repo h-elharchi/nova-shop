@@ -218,6 +218,7 @@ export function AdminAccountPage() {
                 <label className={labelCls}>{t('account.new_password')}</label>
                 <input
                   type="password"
+                  autoComplete="new-password"
                   value={newPwd}
                   onChange={e => setNewPwd(e.target.value)}
                   className={inputCls}
@@ -230,6 +231,7 @@ export function AdminAccountPage() {
                 <label className={labelCls}>{t('account.confirm_password')}</label>
                 <input
                   type="password"
+                  autoComplete="new-password"
                   value={confirmPwd}
                   onChange={e => setConfirmPwd(e.target.value)}
                   className={inputCls}

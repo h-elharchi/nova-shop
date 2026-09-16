@@ -100,6 +100,7 @@ export function SetPasswordPage() {
                   <input
                     type="password"
                     required
+                    autoComplete="new-password"
                     minLength={8}
                     value={pwd}
                     onChange={e => setPwd(e.target.value)}
@@ -117,6 +118,7 @@ export function SetPasswordPage() {
                   <input
                     type="password"
                     required
+                    autoComplete="new-password"
                     minLength={8}
                     value={confirmPwd}
                     onChange={e => setConfirmPwd(e.target.value)}

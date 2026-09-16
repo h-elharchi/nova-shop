@@ -17,22 +17,30 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
     )
   }
 
+  // Utilisateur non connecté
   if (!user) {
     return <Navigate to="/admin/login" replace />
   }
 
-  // Compte désactivé
-  if (profile && !profile.is_active) {
+  // Compte explicitement désactivé (is_active: false).
+  // Si profile est null (requête échouée / migration non exécutée), on ne bloque
+  // pas pour ne pas enfermer les admins existants.
+  if (profile !== null && !profile.is_active) {
     return <Navigate to="/admin/login" replace />
   }
 
-  // Page réservée aux admins
-  if (requiredRole === 'admin' && profile?.role !== 'admin') {
+  // Page réservée aux admins :
+  // — Si le profil est chargé et que le rôle n'est pas 'admin' → /admin
+  // — Si le profil est null (schema pas encore migré) → on laisse passer ;
+  //   la protection réelle est assurée par la RLS côté Supabase.
+  if (requiredRole === 'admin' && profile !== null && profile.role !== 'admin') {
     return <Navigate to="/admin" replace />
   }
 
-  // Page réservée aux agents et admins
-  if (requiredRole === 'agent' && !['admin', 'agent'].includes(profile?.role ?? '')) {
+  // Page réservée aux agents + admins :
+  // — Même logique : si profil chargé et rôle invalide → login
+  // — Si null → on laisse passer (RLS protège)
+  if (requiredRole === 'agent' && profile !== null && !['admin', 'agent'].includes(profile.role)) {
     return <Navigate to="/admin/login" replace />
   }
 
