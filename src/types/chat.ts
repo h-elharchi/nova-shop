@@ -108,6 +108,74 @@ export interface WrapUpData {
   wrapUpSeconds: number
 }
 
+// ── Supervision types ─────────────────────────────────────────────────────────
+
+export interface AgentDashboardEntry {
+  id: string
+  user_id: string
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+  avatar_url: string | null
+  status: ChatAgentStatus
+  active_conversations_count: number
+  capacity: number
+  last_seen_at: string | null
+  status_changed_at: string | null
+  pause_reason_fr: string | null
+  pause_reason_ar: string | null
+  seconds_in_status: number
+}
+
+export interface DispositionStat {
+  code: string
+  name_fr: string
+  name_ar: string
+  cnt: number
+}
+
+export interface SupervisionKpi {
+  total_received: number
+  total_taken: number
+  total_closed: number
+  total_timeout: number
+  total_waiting: number
+  take_rate_pct: number | null
+  avg_wait_seconds: number | null
+  avg_handle_seconds: number | null
+  service_level_pct: number | null
+  service_level_threshold: number
+  dispositions: DispositionStat[]
+}
+
+export interface ConversationHistoryItem {
+  id: string
+  customer_first_name: string
+  customer_last_name: string
+  customer_phone: string
+  status: ChatConversationStatus
+  assigned_admin_id: string | null
+  created_at: string
+  assigned_at: string | null
+  closed_at: string | null
+  wrap_up_seconds: number | null
+  internal_notes: string | null
+  disposition_code_id: string | null
+  transferred_from_id: string | null
+  agent_first_name: string | null
+  agent_last_name: string | null
+  disposition_code: string | null
+  disposition_name_fr: string | null
+  disposition_name_ar: string | null
+}
+
+export interface ConversationHistoryResult {
+  total: number
+  page: number
+  page_size: number
+  rows: ConversationHistoryItem[]
+}
+
 export interface ClientCard360 {
   conversations: Array<{
     id: string

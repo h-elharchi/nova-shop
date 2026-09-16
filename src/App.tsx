@@ -21,6 +21,8 @@ import { AdminChatPage } from './pages/Admin/ChatPage'
 import { AdminAccountPage } from './pages/Admin/AccountPage'
 import { AdminUsersPage } from './pages/Admin/UsersPage'
 import { CRCSettingsPage } from './pages/Admin/CRCSettingsPage'
+import { SupervisionPage } from './pages/Admin/SupervisionPage'
+import { HistoryPage } from './pages/Admin/HistoryPage'
 import { SetPasswordPage } from './pages/SetPasswordPage'
 import { ProtectedRoute } from './pages/Admin/ProtectedRoute'
 
@@ -70,7 +72,11 @@ function AppContent() {
           <Route path="/admin/products/:id/edit" element={<ProtectedRoute requiredRole="admin"><ProductFormPage /></ProtectedRoute>} />
           <Route path="/admin/categories" element={<ProtectedRoute requiredRole="admin"><AdminCategoriesPage /></ProtectedRoute>} />
           <Route path="/admin/users"        element={<ProtectedRoute requiredRole="admin"><AdminUsersPage /></ProtectedRoute>} />
+          <Route path="/admin/supervision"  element={<ProtectedRoute requiredRole="admin"><SupervisionPage /></ProtectedRoute>} />
           <Route path="/admin/crc-settings" element={<ProtectedRoute requiredRole="admin"><CRCSettingsPage /></ProtectedRoute>} />
+
+          {/* Admin — routes protégées (agent + admin) */}
+          <Route path="/admin/history"      element={<ProtectedRoute requiredRole="agent"><HistoryPage /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

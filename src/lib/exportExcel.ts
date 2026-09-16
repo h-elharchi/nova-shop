@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx'
 import type { Order, OrderStatus } from '../types'
+import type { ConversationHistoryItem } from '../types/chat'
 
 const STATUS_LABELS: Record<string, Record<OrderStatus, string>> = {
   fr: { new: 'Nouvelle', contacted: 'Contactée', confirmed: 'Confirmée', cancelled: 'Annulée', completed: 'Terminée' },
@@ -94,6 +95,100 @@ export function exportOrdersToExcel(
   XLSX.utils.book_append_sheet(wb, ws, 'Commandes')
 
   // Browser download
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+  const blob = new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export interface ConvExportHeaders {
+  date: string
+  client: string
+  phone: string
+  status: string
+  agent: string
+  disposition: string
+  wait_seconds: string
+  duration_seconds: string
+  notes: string
+}
+
+function fmtSeconds(s: number | null | undefined): string {
+  if (s == null) return ''
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  return m > 0 ? `${m}m ${sec}s` : `${sec}s`
+}
+
+export function exportConversationsToExcel(
+  rows: ConversationHistoryItem[],
+  headers: ConvExportHeaders,
+  filename: string
+): void {
+  const headerRow = [
+    headers.date,
+    headers.client,
+    headers.phone,
+    headers.status,
+    headers.agent,
+    headers.disposition,
+    headers.wait_seconds,
+    headers.duration_seconds,
+    headers.notes,
+  ]
+
+  const dataRows = rows.map(r => {
+    const waitSecs = r.assigned_at && r.created_at
+      ? Math.round((new Date(r.assigned_at).getTime() - new Date(r.created_at).getTime()) / 1000)
+      : null
+    return [
+      formatDate(r.created_at),
+      `${r.customer_first_name} ${r.customer_last_name}`.trim(),
+      r.customer_phone,
+      r.status,
+      r.agent_first_name ? `${r.agent_first_name} ${r.agent_last_name ?? ''}`.trim() : '',
+      r.disposition_code ?? '',
+      fmtSeconds(waitSecs),
+      fmtSeconds(r.wrap_up_seconds),
+      r.internal_notes ?? '',
+    ]
+  })
+
+  const ws = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows])
+  ws['!cols'] = [
+    { wch: 12 }, // date
+    { wch: 22 }, // client
+    { wch: 16 }, // phone
+    { wch: 12 }, // status
+    { wch: 22 }, // agent
+    { wch: 16 }, // disposition
+    { wch: 12 }, // wait
+    { wch: 12 }, // duration
+    { wch: 40 }, // notes
+  ]
+  if (ws['!ref']) ws['!autofilter'] = { ref: ws['!ref'] }
+  if (!ws['!views']) ws['!views'] = []
+  ws['!views'].push({ state: 'frozen', xSplit: 0, ySplit: 1, topLeftCell: 'A2', activeCell: 'A2', sqref: 'A2' })
+
+  // Phone column (col 2) as text
+  const range = ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : null
+  if (range) {
+    for (let row = 1; row <= range.e.r; row++) {
+      const addr = XLSX.utils.encode_cell({ r: row, c: 2 })
+      const cell = ws[addr]
+      if (cell) { cell.t = 's'; cell.z = '@' }
+    }
+  }
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Conversations')
+
   const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
   const blob = new Blob([buf], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

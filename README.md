@@ -27,7 +27,7 @@ Les clients parcourent le catalogue, commandent via WhatsApp ou via un formulair
 - Dark mode / light mode avec persistance
 - Design responsive (mobile-first)
 
-**Admin**
+**Admin / Agent**
 - Dashboard : statistiques produits et commandes
 - CRUD produits : ajout, édition, activation, suppression
 - Upload images et vidéos (Supabase Storage)
@@ -35,7 +35,23 @@ Les clients parcourent le catalogue, commandent via WhatsApp ou via un formulair
 - Gestion commandes : filtres avancés (statut, produit, période), changement de statut
 - Export Excel des commandes filtrées
 - Appel / WhatsApp direct depuis les commandes
-- Interface chat temps réel : file d'attente, prise en charge, historique, toggle disponibilité
+- Interface chat CRC temps réel :
+  - Statuts agent : disponible / occupé / pause (avec motif)
+  - File d'attente + prise en charge atomique (`claim_conversation` + `FOR UPDATE SKIP LOCKED`)
+  - Réponses rapides avec sélecteur `/` dans la zone de saisie
+  - Transfert de conversation entre agents (avec note)
+  - Clôture avec wrap-up : code de disposition + notes internes + durée
+  - Fiche client 360° : historique conversations + commandes par téléphone
+  - Notifications sonores et navigateur (badge onglet)
+  - Historique paginé des conversations avec filtres (statut, agent, disposition, téléphone, dates)
+  - Export Excel de l'historique
+- Supervision (admin uniquement) :
+  - Tableau de bord agents en temps réel (statut, charge, durée dans le statut)
+  - KPIs : volume, taux de prise, DMA (ASA), DMT (AHT), niveau de service (SLA)
+  - Répartition des codes de disposition
+  - Filtres temporels (aujourd'hui / 7 jours / 30 jours / personnalisé) et par agent
+- Gestion utilisateurs : invitation par email, rôles admin/agent, désactivation
+- Paramètres CRC : motifs de pause, codes de disposition, réponses rapides, paramètres généraux
 
 ---
 
@@ -70,8 +86,11 @@ Les URLs ont le format `https://host/nova-shop/#/products`.
 HashRouter
   └── ThemeContext.Provider   (isDark, toggleTheme)
         └── LanguageContext.Provider  (lang, setLang, t, isRTL, dir)
-              └── Routes
+              └── AgentProvider  (useChatPresence singleton — partage le statut agent dans tout l'admin)
+                    └── Routes
 ```
+
+`AgentProvider` (`src/context/AgentContext.tsx`) démarre `useChatPresence` une seule fois au niveau de l'application. Tous les composants admin accèdent au statut agent via `useAgentCtx()` sans remontage lors des navigations.
 
 ### State Management
 
@@ -182,6 +201,23 @@ $$ LANGUAGE sql SECURITY DEFINER;
 | `chat_conversations` | SELECT/INSERT WHERE customer_user_id = auth.uid() | FULL ACCESS |
 | `chat_messages` | SELECT/INSERT sur ses propres conversations | FULL ACCESS |
 | `chat_agents` | — | FULL ACCESS |
+| `crc_pause_reasons` | — | FULL ACCESS |
+| `crc_disposition_codes` | — | FULL ACCESS |
+| `crc_quick_replies` | — | FULL ACCESS |
+| `crc_settings` | — | FULL ACCESS |
+
+### Rôles système
+
+| Rôle | Valeur `profiles.role` | Accès |
+|---|---|---|
+| Administrateur | `admin` | Dashboard complet, produits, catégories, CRC, supervision, gestion utilisateurs |
+| Agent | `agent` | Chat, commandes, historique, compte |
+
+**Fonctions helper :**
+```sql
+is_admin()  -- profiles.role = 'admin'
+is_staff()  -- profiles.role IN ('admin', 'agent')
+```
 
 ### Créer un admin
 
@@ -399,14 +435,26 @@ Les admins qui ont la page `/admin/chat` ouverte envoient un heartbeat toutes le
 
 | Fichier | Rôle |
 |---|---|
-| `supabase-chat.sql` | Schéma complet + RLS + fonctions PostgreSQL |
-| `src/types/chat.ts` | Types TypeScript du module chat |
+| `supabase-chat.sql` | Tables chat + RLS + fonctions PostgreSQL (Lot 1) |
+| `supabase-crc.sql` | Tables CRC (pause, disposition, quick reply, settings) + RPCs wrap-up, transfert, 360° (Lot 2) |
+| `supabase-supervision.sql` | Fonctions de supervision et KPIs (Lot 3) |
+| `src/types/chat.ts` | Tous les types TypeScript du module chat + supervision |
 | `src/lib/chat.ts` | Fonctions utilitaires (auth anonyme, CRUD, RPCs) |
+| `src/lib/supervision.ts` | Wrappers RPC supervision (agents dashboard, KPIs, historique) |
 | `src/hooks/useChat.ts` | Machine d'état côté client |
 | `src/hooks/useChatMessages.ts` | Chargement + Realtime messages |
 | `src/hooks/useChatPresence.ts` | Présence admin + liste conversations |
-| `src/components/chat/` | 9 composants UI (widget, messages, formulaire…) |
-| `src/pages/Admin/ChatPage.tsx` | Interface admin complète |
+| `src/hooks/useSupervision.ts` | Données supervision + Realtime agents/conversations |
+| `src/hooks/useConversationHistory.ts` | Historique paginé avec gestion des filtres |
+| `src/context/AgentContext.tsx` | Provider singleton pour `useChatPresence` |
+| `src/hooks/useNotifications.ts` | Notifications sonores (Web Audio API) + navigateur |
+| `src/hooks/useQuickReplies.ts` | Chargement des réponses rapides |
+| `src/components/chat/` | Composants widget client (9) |
+| `src/components/chat/admin/` | Composants admin : PauseModal, WrapUpModal, QuickReplyPicker, TransferModal, ClientCard360, AdminChatInput |
+| `src/pages/Admin/ChatPage.tsx` | Interface agent chat complète (file, actif, pause, wrap-up, transfert, 360°) |
+| `src/pages/Admin/SupervisionPage.tsx` | Tableau de bord supervision (admin uniquement) |
+| `src/pages/Admin/HistoryPage.tsx` | Historique paginé des conversations |
+| `src/pages/Admin/CRCSettingsPage.tsx` | Paramètres CRC (pause, disposition, quick reply, général) |
 
 ### Sécurité RLS
 
@@ -422,17 +470,24 @@ Les admins qui ont la page `/admin/chat` ouverte envoient un heartbeat toutes le
 
 Structure de clés :
 ```
-nav.*         → Navigation
-hero.*        → Section héro
-sections.*    → Titres de sections
-product.*     → Labels produit
-filters.*     → Labels filtres
-admin.*       → Interface admin
-forms.*       → Labels formulaires
-contact.*     → Page contact
-footer.*      → Pied de page
-common.*      → Messages génériques
-order.*       → Commandes
+nav.*           → Navigation
+hero.*          → Section héro
+sections.*      → Titres de sections
+product.*       → Labels produit
+filters.*       → Labels filtres
+admin.*         → Interface admin
+account.*       → Mon compte
+users.*         → Gestion utilisateurs
+set_password.*  → Définition mot de passe (invitation)
+forms.*         → Labels formulaires
+contact.*       → Page contact
+footer.*        → Pied de page
+common.*        → Messages génériques
+chat.*          → Widget client + interface admin chat CRC
+crc.*           → Paramètres CRC
+supervision.*   → Page supervision
+history.*       → Historique conversations
+order.*         → Commandes
 ```
 
 **Hook :** `useI18n()` → `t('clé.sous-clé')` retourne la chaîne dans la langue active
@@ -565,6 +620,8 @@ nova-shop/
 ├── supabase-setup.sql                # SQL: categories, products, product_images, profiles, RLS
 ├── supabase-orders.sql               # SQL: orders, index, RLS
 ├── supabase-chat.sql                 # SQL: chat_conversations, chat_messages, chat_agents, RLS, fonctions
+├── supabase-crc.sql                  # SQL: CRC tables + RPCs wrap-up, transfert, 360° (Lot 2)
+├── supabase-supervision.sql          # SQL: fonctions KPI et supervision (Lot 3)
 │
 ├── public/
 │   ├── favicon.ico / .svg / .png    # Favicons multi-résolutions
@@ -582,22 +639,32 @@ nova-shop/
     ├── context/
     │   ├── LanguageContext.ts        # Context langue + hook useI18n
     │   └── ThemeContext.ts           # Context thème + hook useThemeCtx
+    ├── context/
+    │   ├── LanguageContext.ts        # Context langue + hook useI18n
+    │   ├── ThemeContext.ts           # Context thème + hook useThemeCtx
+    │   └── AgentContext.tsx          # Provider singleton useChatPresence + hook useAgentCtx
     ├── hooks/
     │   ├── useLanguage.ts            # Langue, RTL, traductions
     │   ├── useTheme.ts               # Dark/light mode
     │   ├── useAuth.ts                # Supabase Auth
+    │   ├── useStaffAuth.ts           # Auth étendue avec profil (rôle, avatar...)
     │   ├── useCategories.ts          # Fetch catégories actives
     │   ├── useProducts.ts            # Fetch produits avec filtres
     │   ├── useProduct.ts             # Fetch produit par slug
     │   ├── useOrders.ts              # Créer commande, lister commandes, stats
     │   ├── useChat.ts                # Machine d'état widget chat client
     │   ├── useChatMessages.ts        # Chargement + Realtime messages
-    │   └── useChatPresence.ts        # Présence admin + liste conversations (Realtime)
+    │   ├── useChatPresence.ts        # Présence admin + liste conversations (Realtime)
+    │   ├── useNotifications.ts       # Notifications sonores (Web Audio API) + navigateur
+    │   ├── useQuickReplies.ts        # Chargement réponses rapides CRC
+    │   ├── useSupervision.ts         # Données supervision + Realtime
+    │   └── useConversationHistory.ts # Historique paginé avec gestion filtres
     ├── lib/
     │   ├── supabase.ts               # Client Supabase singleton
     │   ├── whatsapp.ts               # Utilitaires WhatsApp
-    │   ├── exportExcel.ts            # Export XLSX
-    │   └── chat.ts                   # Auth anonyme, CRUD conversations/messages, RPCs
+    │   ├── exportExcel.ts            # Export XLSX (commandes + conversations)
+    │   ├── chat.ts                   # Auth anonyme, CRUD conversations/messages, RPCs
+    │   └── supervision.ts            # Wrappers RPC supervision
     ├── components/
     │   ├── layout/
     │   │   ├── Header.tsx            # Navbar + menu mobile + langue + dark mode
@@ -621,7 +688,14 @@ nova-shop/
     │       ├── ChatClosedMessage.tsx # Écran de fin de conversation
     │       ├── ChatMessage.tsx       # Bulle de message (customer/admin/system)
     │       ├── ChatInput.tsx         # Zone de saisie avec auto-hauteur
-    │       └── ChatWindow.tsx        # Conteneur messages + input
+    │       ├── ChatWindow.tsx        # Conteneur messages + input
+    │       └── admin/
+    │           ├── PauseModal.tsx       # Sélection motif de pause
+    │           ├── WrapUpModal.tsx      # Disposition + notes à la clôture
+    │           ├── QuickReplyPicker.tsx # Sélecteur réponses rapides (overlay)
+    │           ├── TransferModal.tsx    # Transfert vers un autre agent
+    │           ├── ClientCard360.tsx    # Fiche client 360° (conv + commandes)
+    │           └── AdminChatInput.tsx   # Input admin avec déclencheur réponses rapides
     └── pages/
         ├── Home/index.tsx            # Accueil
         ├── Products/index.tsx        # Catalogue avec filtres
@@ -631,14 +705,19 @@ nova-shop/
         ├── Contact/index.tsx         # Page contact WhatsApp
         └── Admin/
             ├── LoginPage.tsx         # Connexion
-            ├── ProtectedRoute.tsx    # Guard de route
-            ├── AdminLayout.tsx       # Layout sidebar admin
-            ├── DashboardPage.tsx     # Tableau de bord
+            ├── ProtectedRoute.tsx    # Guard de route (vérifie session + rôle)
+            ├── AdminLayout.tsx       # Layout sidebar admin avec statut agent
+            ├── DashboardPage.tsx     # Tableau de bord produits + commandes
             ├── ProductsPage.tsx      # Liste produits admin
-            ├── ProductFormPage.tsx   # Formulaire produit (création/édition)
+            ├── ProductFormPage.tsx   # Formulaire produit (création/édition + upload)
             ├── CategoriesPage.tsx    # Gestion catégories
-            ├── OrdersPage.tsx        # Gestion commandes
-            └── ChatPage.tsx          # Interface admin chat (file, actif, historique)
+            ├── OrdersPage.tsx        # Gestion commandes (filtres, statuts, export)
+            ├── ChatPage.tsx          # Interface agent chat CRC (file, actif, pause, wrap-up)
+            ├── CRCSettingsPage.tsx   # Paramètres CRC (pause, disposition, quick reply, général)
+            ├── SupervisionPage.tsx   # Supervision temps réel + KPIs (admin uniquement)
+            ├── HistoryPage.tsx       # Historique paginé des conversations
+            ├── AccountPage.tsx       # Mon compte (profil, avatar, mot de passe)
+            └── UsersPage.tsx         # Gestion utilisateurs (invitation, rôles)
 ```
 
 ---
@@ -817,16 +896,24 @@ cp .env.example .env
 ### Supabase
 
 1. Créer un projet sur [supabase.com](https://supabase.com)
-2. Dans **SQL Editor**, exécuter `supabase-setup.sql`
-3. Dans **SQL Editor**, exécuter `supabase-orders.sql`
-4. Dans **SQL Editor**, exécuter `supabase-chat.sql`
-5. Créer manuellement la table `product_videos` (voir section 24) si absente de `supabase-setup.sql`
-6. Dans **Storage**, créer les buckets `product-images` et `product-videos` (Public)
-7. Configurer les policies Storage (voir section 9)
-8. Dans **Authentication**, activer **Anonymous Sign-ins** (requis pour le chat client)
-9. Dans **Authentication > Users**, créer un utilisateur admin
-10. Exécuter : `UPDATE profiles SET role = 'admin' WHERE email = 'admin@example.com';`
-11. Récupérer **Project URL** et **anon key** depuis **Settings > API**
+2. Dans **SQL Editor**, exécuter dans l'ordre :
+   1. `supabase-setup.sql` — tables de base (categories, products, profiles)
+   2. `supabase-orders.sql` — table orders
+   3. `supabase-chat.sql` — tables chat + fonctions temps réel
+   4. `supabase-crc.sql` — tables CRC + RPCs avancés (Lot 2)
+   5. `supabase-supervision.sql` — fonctions KPI et supervision (Lot 3)
+3. Si la table `product_videos` n'existe pas, la créer (voir schéma section 24)
+4. Dans **Database > Publications**, ajouter `chat_conversations`, `chat_messages`, `chat_agents` à la publication `supabase_realtime`
+5. Dans **Storage**, créer les buckets `product-images` et `product-videos` (accès Public)
+6. Configurer les policies Storage (voir section 9)
+7. Dans **Authentication > Configuration**, activer **Anonymous Sign-ins** (requis pour le chat client)
+8. Dans **Authentication > Users**, créer un utilisateur admin avec email + mot de passe
+9. Promouvoir l'utilisateur :
+   ```sql
+   UPDATE profiles SET role = 'admin' WHERE email = 'admin@example.com';
+   ```
+10. Récupérer **Project URL** et **anon key** depuis **Settings > API**
+11. Pour les agents CRC, inviter les utilisateurs via la page `/admin/users` (admin uniquement)
 
 ### Variables d'environnement
 
@@ -968,13 +1055,15 @@ jobs:
 - Pas de recherche full-text avancée (utilise `ilike` sur name_fr et name_ar)
 - Pas de système de paiement en ligne
 - Pas de gestion de stock quantitatif (seulement disponible/indisponible)
-- Export Excel charge toutes les commandes filtrées en mémoire
-- Numéro WhatsApp hardcodé dans le code source
-- `ProtectedRoute` ne vérifie pas le rôle admin
+- Export Excel charge les lignes filtrées courantes en mémoire (pas de streaming)
+- Numéro WhatsApp hardcodé dans le code source (`src/lib/whatsapp.ts`)
 - Copyright année statique (`2024`) dans les traductions
-- `product_videos` absent du script SQL de setup
-- Session chat perdue à la fermeture de l'onglet (sessionStorage)
-- Si l'admin ferme l'onglet sans cliquer "Hors ligne", le statut reste actif jusqu'à expiration 2 min
+- `product_videos` absent du script SQL `supabase-setup.sql` (créer manuellement)
+- `.env.example` contient des préfixes `NEXT_PUBLIC_` incorrects (doit être `VITE_`)
+- Session chat client perdue à la fermeture de l'onglet (sessionStorage — comportement voulu)
+- Si un agent ferme l'onglet sans cliquer "Hors ligne", le statut reste actif 2 min (heartbeat expiration)
+- La page Supervision ne permet pas encore de filtrer par agent individuel dans les graphiques de dispositions
+- `react-helmet-async` présent dans `package.json` mais non utilisé
 
 ---
 
@@ -982,17 +1071,17 @@ jobs:
 
 - Ajouter `product_videos` dans `supabase-setup.sql`
 - Corriger `.env.example` (VITE_ au lieu de NEXT_PUBLIC_)
-- Vérification du rôle admin dans `ProtectedRoute`
 - Numéro WhatsApp en variable d'environnement (`VITE_WHATSAPP_NUMBER`)
 - Meta OG dynamiques par produit (via `react-helmet-async`)
-- Notifications sonores/badge onglet pour nouvelles conversations en attente
 - Pagination côté serveur pour les produits
 - Gestion de stock quantitatif
 - Système de favoris côté client
 - Statistiques de ventes avancées dans le dashboard
-- Transfert de conversation entre agents admin
 - Pièces jointes dans le chat (images depuis le catalogue)
-- Évaluation client à la fermeture de conversation
+- Évaluation client (CSAT) à la fermeture de conversation
+- Graphiques historiques sur la page Supervision (courbe volume/jour)
+- Filtres agents dans l'historique (actuellement sans recherche par nom d'agent)
+- Code-splitting (dynamic import) pour réduire la taille du bundle (actuellement ~940 kB minifié)
 
 ---
 
