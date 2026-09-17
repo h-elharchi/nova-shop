@@ -70,6 +70,23 @@ export function useCreateOrder() {
       return false
     }
 
+    // Créer un rappel callback pour validation par un agent
+    const parts: string[] = [`Commande site : ${product.name_fr} — ${product.price} MAD`]
+    if (params.deliveryCity?.trim())    parts.push(params.deliveryCity.trim())
+    if (params.deliveryAddress?.trim()) parts.push(params.deliveryAddress.trim())
+
+    await supabase.rpc('create_callback_request', {
+      p_first_name:         params.firstName.trim(),
+      p_last_name:          params.lastName.trim(),
+      p_phone:              normalizePhone(params.phone),
+      p_email:              params.email?.trim() || null,
+      p_city:               params.deliveryCity?.trim() || null,
+      p_message:            parts.join(' | '),
+      p_preferred_slot:     'asap',
+      p_preferred_datetime: null,
+    })
+    // Echec silencieux : la commande est enregistrée même si le rappel échoue
+
     setSuccess(true)
     setLoading(false)
     return true
