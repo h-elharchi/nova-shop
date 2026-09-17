@@ -8,9 +8,8 @@ import { AdminLayout } from './AdminLayout'
 import { useCustomers, useCustomerAddresses, useCustomerAudit } from '../../hooks/useCustomers'
 import { useI18n } from '../../context/LanguageContext'
 import { OrderCreateModal } from '../../components/orders/OrderCreateModal'
-import { OrderStatusBadge } from '../../components/orders/OrderStatusBadge'
+import { CustomerOrdersPanel } from '../../components/orders/CustomerOrdersPanel'
 import { supabase } from '../../lib/supabase'
-import type { Order } from '../../types'
 import type { CustomerView, CustomerAddress } from '../../types/interactions'
 
 function formatPhone(phone: string): string {
@@ -195,26 +194,15 @@ interface CustomerDetailModalProps {
 function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: CustomerDetailModalProps) {
   const { updateNotes, archiveCustomer, restoreCustomer, deleteCustomer } = useCustomers()
   const { audit } = useCustomerAudit(customer.id)
-  const [orders, setOrders]   = useState<Order[]>([])
   const [notes, setNotes]     = useState(customer.notes ?? '')
   const [saving, setSaving]   = useState(false)
   const [savedMsg, setSavedMsg] = useState('')
   const [activeTab, setActiveTab] = useState<DetailTab>('orders')
-  const [showCreate, setShowCreate] = useState(false)
   const [showArchive, setShowArchive] = useState(false)
   const [showDelete, setShowDelete]   = useState(false)
   const [actionMsg, setActionMsg] = useState('')
   const [archiveError, setArchiveError] = useState<string | null>(null)
   const [deleteError, setDeleteError]   = useState<string | null>(null)
-
-  useEffect(() => {
-    supabase
-      .from('orders')
-      .select('id, product_name, product_price, status, created_at, channel')
-      .eq('customer_id', customer.id)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => setOrders((data ?? []) as Order[]))
-  }, [customer.id])
 
   async function handleSaveNotes() {
     setSaving(true)
@@ -249,7 +237,7 @@ function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: Custo
   const waMsg = encodeURIComponent(`Bonjour ${customer.first_name}`)
 
   const tabs: { key: DetailTab; label: string }[] = [
-    { key: 'orders',    label: `${t('customers.orders_tab')} (${orders.length})` },
+    { key: 'orders',    label: t('customers.orders_tab') },
     { key: 'addresses', label: t('customers_v2.addresses') },
     { key: 'audit',     label: t('customers_v2.audit_log') },
   ]
@@ -353,29 +341,11 @@ function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: Custo
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto p-5">
           {activeTab === 'orders' && (
-            <div className="space-y-3">
-              <div className="flex justify-end">
-                <button onClick={() => setShowCreate(true)}
-                  className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline">
-                  <Plus className="w-3 h-3" />{t('customers.add_order')}
-                </button>
-              </div>
-              {orders.length === 0 ? (
-                <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">{t('order.no_orders')}</p>
-              ) : (
-                orders.map(o => (
-                  <div key={o.id} className="flex items-center justify-between gap-3 bg-gray-50 dark:bg-gray-800 rounded-xl px-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{o.product_name}</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500">
-                        {o.product_price.toLocaleString()} MAD · {new Date(o.created_at).toLocaleDateString('fr-MA')}
-                      </p>
-                    </div>
-                    <OrderStatusBadge status={o.status} />
-                  </div>
-                ))
-              )}
-            </div>
+            <CustomerOrdersPanel
+              customerId={customer.id}
+              prefillCustomer={{ first_name: customer.first_name, last_name: customer.last_name, phone: customer.phone }}
+              defaultChannel="phone"
+            />
           )}
 
           {activeTab === 'addresses' && (
@@ -402,14 +372,6 @@ function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: Custo
           )}
         </div>
       </div>
-
-      {showCreate && (
-        <OrderCreateModal
-          onClose={() => setShowCreate(false)}
-          prefillCustomer={{ first_name: customer.first_name, last_name: customer.last_name, phone: customer.phone }}
-          defaultChannel="phone"
-        />
-      )}
 
       {showArchive && (
         <ArchiveModal customer={customer} onConfirm={handleArchive} onClose={() => { setShowArchive(false); setArchiveError(null) }} t={t} error={archiveError} />

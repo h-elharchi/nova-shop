@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   MessageSquare, Mail, Phone, Clock, Check, X, Zap, ArrowLeftRight,
-  ChevronRight, User, Inbox, AlertCircle, Copy, ExternalLink, RefreshCw,
+  ChevronRight, User, Inbox, AlertCircle, Copy, ExternalLink, RefreshCw, ShoppingBag,
 } from 'lucide-react'
 import { AdminLayout } from './AdminLayout'
 import { useI18n } from '../../context/LanguageContext'
@@ -14,6 +14,7 @@ import { useQuickReplies } from '../../hooks/useQuickReplies'
 import { useNotifications } from '../../hooks/useNotifications'
 import { ChatMessage } from '../../components/chat/ChatMessage'
 import { AdminChatInput } from '../../components/chat/admin/AdminChatInput'
+import { CustomerOrdersPanel } from '../../components/orders/CustomerOrdersPanel'
 import { PauseModal } from '../../components/chat/admin/PauseModal'
 import { supabase } from '../../lib/supabase'
 import { loadDispositionCodes } from '../../lib/chat'
@@ -601,14 +602,11 @@ function CallbackPanel({ interaction, onWrapUp }: {
 
 function Customer360({ interaction }: { interaction: InteractionWithDetails }) {
   const { t } = useI18n()
-  const [orders, setOrders] = useState<{ id: string; product_name: string; product_price: number; status: string; created_at: string }[]>([])
+  const [tab, setTab] = useState<'orders' | 'interactions'>('orders')
   const [interactions, setInteractions] = useState<{ id: string; channel: string; status: string; created_at: string }[]>([])
 
   useEffect(() => {
     if (!interaction.customer_id) return
-    supabase.from('orders').select('id, product_name, product_price, status, created_at')
-      .eq('customer_id', interaction.customer_id).order('created_at', { ascending: false }).limit(5)
-      .then(({ data }) => setOrders(data ?? []))
     supabase.from('interactions').select('id, channel, status, created_at')
       .eq('customer_id', interaction.customer_id).order('created_at', { ascending: false }).limit(5)
       .then(({ data }) => setInteractions(data ?? []))
@@ -648,44 +646,54 @@ function Customer360({ interaction }: { interaction: InteractionWithDetails }) {
         </div>
       </div>
 
-      {/* Orders */}
-      <div>
-        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-          {t('customers.orders_tab')} ({orders.length})
-        </p>
-        {orders.length === 0 ? (
-          <p className="text-xs text-gray-400">{t('order.no_orders')}</p>
-        ) : (
-          <div className="space-y-1.5">
-            {orders.map(o => (
-              <div key={o.id} className="flex items-center justify-between gap-2 bg-gray-50 dark:bg-gray-800 rounded-lg px-2 py-1.5">
-                <p className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate">{o.product_name}</p>
-                <span className="text-xs text-gray-400 whitespace-nowrap">{o.product_price} MAD</span>
-              </div>
-            ))}
-          </div>
-        )}
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-100 dark:border-gray-700">
+        <button
+          onClick={() => setTab('orders')}
+          className={`flex items-center gap-1 px-2 py-1.5 text-xs font-medium rounded-t transition-colors ${tab === 'orders' ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+        >
+          <ShoppingBag className="w-3 h-3" />{t('customers.orders_tab')}
+        </button>
+        <button
+          onClick={() => setTab('interactions')}
+          className={`flex items-center gap-1 px-2 py-1.5 text-xs font-medium rounded-t transition-colors ${tab === 'interactions' ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+        >
+          <MessageSquare className="w-3 h-3" />{t('customers_v2.interactions_tab')}
+        </button>
       </div>
 
-      {/* Interactions */}
-      <div>
-        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-          {t('customers_v2.interactions_tab')} ({interactions.length})
-        </p>
-        {interactions.length === 0 ? (
-          <p className="text-xs text-gray-400">{t('interactions.no_active')}</p>
-        ) : (
-          <div className="space-y-1.5">
-            {interactions.map(i => (
+      {/* Orders tab */}
+      {tab === 'orders' && interaction.customer_id && (
+        <CustomerOrdersPanel
+          customerId={interaction.customer_id}
+          prefillCustomer={{
+            first_name: interaction.customer_first_name ?? '',
+            last_name:  interaction.customer_last_name  ?? '',
+            phone:      interaction.customer_phone       ?? '',
+          }}
+          compact
+        />
+      )}
+      {tab === 'orders' && !interaction.customer_id && (
+        <p className="text-xs text-gray-400">{t('order.no_orders')}</p>
+      )}
+
+      {/* Interactions tab */}
+      {tab === 'interactions' && (
+        <div className="space-y-1.5">
+          {interactions.length === 0 ? (
+            <p className="text-xs text-gray-400">{t('interactions.no_active')}</p>
+          ) : (
+            interactions.map(i => (
               <div key={i.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-lg px-2 py-1.5">
                 <ChannelBadge channel={i.channel as InteractionChannel} />
                 <span className="text-xs text-gray-600 dark:text-gray-400">{new Date(i.created_at).toLocaleDateString('fr-MA')}</span>
                 <span className="text-xs text-gray-400 ml-auto">{t(`interactions.status_${i.status}`) || i.status}</span>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   )
 }
