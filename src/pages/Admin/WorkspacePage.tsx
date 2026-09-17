@@ -451,6 +451,7 @@ function CallbackPanel({ interaction, onWrapUp }: {
   const [nextAt, setNextAt] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [msg, setMsg] = useState('')
+  const [msgIsError, setMsgIsError] = useState(false)
 
   useEffect(() => {
     supabase
@@ -477,12 +478,17 @@ function CallbackPanel({ interaction, onWrapUp }: {
       p_next_attempt_at: nextAt || null,
     })
     if (!error) {
+      setMsgIsError(false)
       setMsg(t('callback.record_attempt'))
       setResult('')
       setComment('')
       setNextAt('')
       refetch()
       setTimeout(() => setMsg(''), 2000)
+    } else {
+      setMsgIsError(true)
+      setMsg(error.message)
+      setTimeout(() => setMsg(''), 4000)
     }
     setSubmitting(false)
   }
@@ -565,13 +571,13 @@ function CallbackPanel({ interaction, onWrapUp }: {
               </button>
             ))}
           </div>
-          <input value={comment} onChange={e => setComment(e.target.value)} placeholder={t('crc.internal_notes')}
+          <input value={comment} onChange={e => setComment(e.target.value)} placeholder={t('callback.comment')}
             className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-gray-100" />
           {result === 'callback_later' && (
             <input type="datetime-local" value={nextAt} onChange={e => setNextAt(e.target.value)}
               className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-gray-100" />
           )}
-          {msg && <p className="text-xs text-green-600 dark:text-green-400">{msg}</p>}
+          {msg && <p className={`text-xs ${msgIsError ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>{msg}</p>}
           <button onClick={handleRecordAttempt} disabled={!result || submitting}
             className="w-full py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-xl disabled:opacity-50">
             {t('callback.record_attempt')}
@@ -674,7 +680,7 @@ function Customer360({ interaction }: { interaction: InteractionWithDetails }) {
               <div key={i.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-lg px-2 py-1.5">
                 <ChannelBadge channel={i.channel as InteractionChannel} />
                 <span className="text-xs text-gray-600 dark:text-gray-400">{new Date(i.created_at).toLocaleDateString('fr-MA')}</span>
-                <span className="text-xs text-gray-400 ml-auto">{i.status}</span>
+                <span className="text-xs text-gray-400 ml-auto">{t(`interactions.status_${i.status}`) || i.status}</span>
               </div>
             ))}
           </div>
@@ -1018,13 +1024,10 @@ export function WorkspacePage() {
                         {t('interactions.wrap_up_title')}
                       </button>
                     )}
-                    {(activeInteraction.status === 'assigned' || activeInteraction.status === 'queued') && (
-                      <button onClick={async () => {
-                        const { error } = await supabase.rpc('activate_interaction', { p_interaction_id: activeInteraction.id })
-                        if (!error) workspace.refresh()
-                      }}
+                    {activeInteraction.status === 'assigned' && (
+                      <button onClick={() => workspace.activateInteraction(activeInteraction.id)}
                         className="px-3 py-1.5 text-xs font-medium bg-green-600 hover:bg-green-700 text-white rounded-xl">
-                        <Check className="w-3.5 h-3.5 inline mr-1" />Activer
+                        <Check className="w-3.5 h-3.5 inline mr-1" />{t('interactions.activate')}
                       </button>
                     )}
                     <button onClick={closePanel}

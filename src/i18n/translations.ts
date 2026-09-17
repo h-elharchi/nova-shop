@@ -657,6 +657,7 @@ export const translations = {
       wrap_up_validate: 'Valider et clôturer',
       queue_empty: 'File vide',
       no_active: 'Aucune interaction active',
+      activate: 'Activer',
     },
     workspace: {
       title: 'Espace de travail',
@@ -690,6 +691,7 @@ export const translations = {
       result_wrong_number: 'Mauvais numéro',
       result_callback_later: 'Rappel demandé',
       record_attempt: 'Enregistrer la tentative',
+      comment: 'Commentaire',
       reschedule: 'Reprogrammer',
       call_now: 'Appeler maintenant',
       form_title: 'Demande de rappel',
@@ -1403,6 +1405,7 @@ export const translations = {
       wrap_up_validate: 'تحقق وأغلق',
       queue_empty: 'الطابور فارغ',
       no_active: 'لا توجد تفاعلات نشطة',
+      activate: 'تفعيل',
     },
     workspace: {
       title: 'مساحة العمل',
@@ -1436,6 +1439,7 @@ export const translations = {
       result_wrong_number: 'رقم خاطئ',
       result_callback_later: 'طلب الاتصال لاحقاً',
       record_attempt: 'تسجيل المحاولة',
+      comment: 'تعليق',
       reschedule: 'إعادة جدولة',
       call_now: 'اتصال الآن',
       form_title: 'طلب معاودة اتصال',

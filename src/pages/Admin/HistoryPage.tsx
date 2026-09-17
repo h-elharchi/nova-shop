@@ -3,6 +3,8 @@ import { Search, RotateCcw, Download, ChevronLeft, ChevronRight, X, MessageSquar
 import { AdminLayout } from './AdminLayout'
 import { useInteractionHistory } from '../../hooks/useInteractionHistory'
 import { useI18n } from '../../context/LanguageContext'
+import { useStaffAuth } from '../../hooks/useStaffAuth'
+import { supabase } from '../../lib/supabase'
 import { loadDispositionCodes } from '../../lib/chat'
 import { useChatMessages } from '../../hooks/useChatMessages'
 import type { CrcDispositionCode } from '../../types/chat'
@@ -110,14 +112,25 @@ const STATUS_OPTIONS = ['', 'queued', 'offered', 'assigned', 'active', 'wrap_up'
 
 export function HistoryPage() {
   const { t } = useI18n()
+  const { isAdmin } = useStaffAuth()
   const history = useInteractionHistory()
   const [dispositions, setDispositions] = useState<CrcDispositionCode[]>([])
+  const [agents, setAgents] = useState<{ id: string; first_name: string | null; last_name: string | null }[]>([])
   const [selectedChat, setSelectedChat] = useState<InteractionHistoryItem | null>(null)
   const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
     loadDispositionCodes().then(setDispositions).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    supabase
+      .from('profiles')
+      .select('id, first_name, last_name')
+      .in('role', ['agent', 'admin'])
+      .then(({ data }) => setAgents(data ?? []))
+  }, [isAdmin])
 
   useEffect(() => {
     history.fetchHistory()
@@ -206,52 +219,86 @@ export function HistoryPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Status */}
-            <select
-              value={history.filters.status}
-              onChange={e => history.setFilters({ status: e.target.value })}
-              className="px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg text-gray-900 dark:text-white"
-            >
-              {STATUS_OPTIONS.map(s => (
-                <option key={s} value={s}>
-                  {s === '' ? t('history.filter_all') : (t(`interactions.status_${s}`) || s)}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('history.filter_status')}</label>
+              <select
+                value={history.filters.status}
+                onChange={e => history.setFilters({ status: e.target.value })}
+                className="px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg text-gray-900 dark:text-white"
+              >
+                {STATUS_OPTIONS.map(s => (
+                  <option key={s} value={s}>
+                    {s === '' ? t('history.filter_all') : (t(`interactions.status_${s}`) || s)}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             {/* Disposition */}
-            <select
-              value={history.filters.dispositionId}
-              onChange={e => history.setFilters({ dispositionId: e.target.value })}
-              className="px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg text-gray-900 dark:text-white"
-            >
-              <option value="">{t('history.filter_all')}</option>
-              {dispositions.filter(d => d.is_active).map(d => (
-                <option key={d.id} value={d.id}>{d.code} — {d.name_fr}</option>
-              ))}
-            </select>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('history.filter_disposition')}</label>
+              <select
+                value={history.filters.dispositionId}
+                onChange={e => history.setFilters({ dispositionId: e.target.value })}
+                className="px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg text-gray-900 dark:text-white"
+              >
+                <option value="">{t('history.filter_all')}</option>
+                {dispositions.filter(d => d.is_active).map(d => (
+                  <option key={d.id} value={d.id}>{d.code} — {d.name_fr}</option>
+                ))}
+              </select>
+            </div>
 
             {/* Phone */}
-            <input
-              type="text"
-              value={history.filters.phone}
-              onChange={e => history.setFilters({ phone: e.target.value })}
-              placeholder={t('history.filter_phone')}
-              className="px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            />
-
-            {/* Date range */}
-            <div className="flex gap-2">
-              <input type="date" value={history.filters.dateFrom}
-                onChange={e => history.setFilters({ dateFrom: e.target.value })}
-                className="flex-1 min-w-0 px-2 py-2 text-xs rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg text-gray-900 dark:text-white"
-              />
-              <input type="date" value={history.filters.dateTo}
-                onChange={e => history.setFilters({ dateTo: e.target.value })}
-                className="flex-1 min-w-0 px-2 py-2 text-xs rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg text-gray-900 dark:text-white"
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('history.filter_phone')}</label>
+              <input
+                type="text"
+                value={history.filters.phone}
+                onChange={e => history.setFilters({ phone: e.target.value })}
+                placeholder={t('history.filter_phone')}
+                className="px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
               />
             </div>
+
+            {/* Date range */}
+            <div className="flex flex-col gap-1">
+              <div className="flex gap-1">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400 flex-1">{t('history.filter_date_from')}</span>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400 flex-1">{t('history.filter_date_to')}</span>
+              </div>
+              <div className="flex gap-2">
+                <input type="date" value={history.filters.dateFrom}
+                  onChange={e => history.setFilters({ dateFrom: e.target.value })}
+                  className="flex-1 min-w-0 px-2 py-2 text-xs rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg text-gray-900 dark:text-white"
+                />
+                <input type="date" value={history.filters.dateTo}
+                  onChange={e => history.setFilters({ dateTo: e.target.value })}
+                  className="flex-1 min-w-0 px-2 py-2 text-xs rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg text-gray-900 dark:text-white"
+                />
+              </div>
+            </div>
           </div>
+
+          {/* Agent filter — admin only */}
+          {isAdmin && agents.length > 0 && (
+            <div className="flex flex-col gap-1 sm:max-w-xs">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('history.filter_agent')}</label>
+              <select
+                value={history.filters.agentId}
+                onChange={e => history.setFilters({ agentId: e.target.value })}
+                className="px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg text-gray-900 dark:text-white"
+              >
+                <option value="">{t('history.filter_all')}</option>
+                {agents.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {[a.first_name, a.last_name].filter(Boolean).join(' ') || a.id.slice(0, 8)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="flex gap-2">
             <button onClick={handleSearch}

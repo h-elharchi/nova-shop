@@ -34,10 +34,10 @@ export function useChatPresence(adminId: string | null) {
     if (convChannelRef.current)  { supabase.removeChannel(convChannelRef.current);  convChannelRef.current  = null }
   }, [])
 
-  const startDurationTimer = useCallback(() => {
+  const startDurationTimer = useCallback((fromTimestamp?: number) => {
     stopDuration()
-    statusChangedAt.current = Date.now()
-    setStatusDuration(0)
+    statusChangedAt.current = fromTimestamp ?? Date.now()
+    setStatusDuration(Math.floor((Date.now() - statusChangedAt.current) / 1000))
     durationRef.current = setInterval(() => {
       if (mounted.current) {
         setStatusDuration(Math.floor((Date.now() - statusChangedAt.current) / 1000))
@@ -57,9 +57,9 @@ export function useChatPresence(adminId: string | null) {
 
   const loadWaitingCount = useCallback(async () => {
     const { count } = await supabase
-      .from('chat_conversations')
+      .from('interactions')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'waiting')
+      .eq('status', 'queued')
     if (mounted.current) setWaitingCount(count ?? 0)
   }, [])
 
@@ -81,6 +81,8 @@ export function useChatPresence(adminId: string | null) {
           setMyStatusState(mine.status)
           setMyPauseReasonId(mine.pause_reason_id)
           setMyActiveCount(mine.active_conversations_count ?? 0)
+          const ts = mine.status_changed_at ? new Date(mine.status_changed_at).getTime() : undefined
+          startDurationTimer(ts)
         }
       })
 
@@ -107,7 +109,7 @@ export function useChatPresence(adminId: string | null) {
       if (convChannelRef.current) supabase.removeChannel(convChannelRef.current)
       const convChannel = supabase
         .channel(`waiting-conv-${id}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_conversations' }, () => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'interactions' }, () => {
           if (mounted.current) loadWaitingCount()
         })
         .subscribe()
@@ -120,7 +122,7 @@ export function useChatPresence(adminId: string | null) {
       cancelled = true
       removeChannels()
     }
-  }, [adminId, loadWaitingCount, removeChannels])
+  }, [adminId, loadWaitingCount, removeChannels, startDurationTimer])
 
   const setStatus = useCallback(async (status: ChatAgentStatus, pauseReasonId?: string | null) => {
     if (!adminId) return

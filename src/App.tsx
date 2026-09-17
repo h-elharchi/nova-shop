@@ -4,7 +4,7 @@ import { ThemeContext } from './context/ThemeContext'
 import { AgentProvider } from './context/AgentContext'
 import { useLanguage } from './hooks/useLanguage'
 import { useTheme } from './hooks/useTheme'
-import { useAuth } from './hooks/useAuth'
+import { useStaffAuth } from './hooks/useStaffAuth'
 import { HomePage } from './pages/Home'
 import { ProductsPage } from './pages/Products'
 import { ProductDetailsPage } from './pages/ProductDetails'
@@ -39,12 +39,12 @@ function AuthRedirectHandler() {
 function AppContent() {
   const lang = useLanguage()
   const theme = useTheme()
-  const { user } = useAuth()
+  const { user, isAgent, isAdmin } = useStaffAuth()
 
   return (
     <ThemeContext.Provider value={theme}>
       <LanguageContext.Provider value={lang}>
-        <AgentProvider userId={user?.id ?? null}>
+        <AgentProvider userId={(isAgent || isAdmin) ? (user?.id ?? null) : null}>
           <AuthRedirectHandler />
           <Routes>
           {/* Public */}
