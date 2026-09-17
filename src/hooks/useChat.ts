@@ -174,12 +174,12 @@ export function useChat() {
     const agentStatus = await checkAgentsOnline()
     if (!mounted.current) return null
 
-    if (agentStatus.busy_count > 0) {
-      // Admins occupés → file d'attente
+    if (agentStatus.available_count > 0 || agentStatus.busy_count > 0) {
+      // Agents présents (disponibles ou occupés) → file d'attente workspace
       setQueuePosition(conv.queue_position)
       setWidgetState('waiting')
     } else {
-      // Aucun admin en ligne → 30s countdown
+      // Aucun agent en ligne → 30s countdown
       setCountdown(TIMEOUT_SECONDS)
       setWidgetState('searching')
       startCountdown(conv.id)
