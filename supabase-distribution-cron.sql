@@ -8,9 +8,11 @@
 --
 -- Exécuter UNE SEULE FOIS dans Supabase SQL Editor
 
--- ─── Supprimer l'ancienne tâche si elle existe ────────────────
+-- ─── Supprimer l'ancienne tâche si elle existe (idempotent) ──
 
-SELECT cron.unschedule('route-interactions');
+SELECT cron.unschedule(jobid)
+FROM cron.job
+WHERE jobname = 'route-interactions';
 
 -- ─── Planifier route_interactions toutes les 30 secondes ─────
 -- Note : pg_cron standard supporte la syntaxe d'intervalle 'N seconds' sur Supabase.

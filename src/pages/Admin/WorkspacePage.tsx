@@ -472,10 +472,10 @@ function CallbackPanel({ interaction, onWrapUp }: {
     if (!callbackId || !result) return
     setSubmitting(true)
     const { error } = await supabase.rpc('record_callback_attempt', {
-      p_callback_id:     callbackId,
-      p_result:          result,
-      p_comment:         comment || null,
-      p_next_attempt_at: nextAt || null,
+      p_callback_request_id: callbackId,
+      p_result:              result,
+      p_comment:             comment || null,
+      p_next_attempt_at:     nextAt || null,
     })
     if (!error) {
       setMsgIsError(false)
