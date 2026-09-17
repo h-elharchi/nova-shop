@@ -39,35 +39,54 @@ export function ChatButton() {
     setMinimized(false)
   }
 
+  const widgetOpen = isOpen && !minimized
+
   return (
     <>
-      {/* Chat widget */}
-      {isOpen && !minimized && (
-        <div
-          className={`fixed bottom-20 z-50 ${isRTL ? 'left-4' : 'right-4'}`}
-          style={{ bottom: '88px' }}
-        >
-          <ChatWidget
-            widgetState={widgetState}
-            conversation={conversation}
-            queuePosition={queuePosition}
-            countdown={countdown}
-            onSubmitForm={startChat}
-            onClose={handleClose}
-            onMinimize={handleMinimize}
-            onNewConversation={startNewConversation}
-            onResetToIdle={handleClose}
+      {widgetOpen && (
+        <>
+          {/* Backdrop mobile — tap to minimize */}
+          <div
+            className="sm:hidden fixed inset-0 z-40 bg-black/40"
+            onClick={handleMinimize}
           />
-        </div>
+
+          {/* Widget container
+              Mobile  : full screen (inset-0)
+              Desktop : anchored corner popup */}
+          <div
+            className={`
+              fixed z-50 inset-0
+              sm:inset-auto sm:bottom-[88px]
+              ${isRTL ? 'sm:left-4' : 'sm:right-4'}
+            `}
+          >
+            <ChatWidget
+              widgetState={widgetState}
+              conversation={conversation}
+              queuePosition={queuePosition}
+              countdown={countdown}
+              onSubmitForm={startChat}
+              onClose={handleClose}
+              onMinimize={handleMinimize}
+              onNewConversation={startNewConversation}
+              onResetToIdle={handleClose}
+            />
+          </div>
+        </>
       )}
 
-      {/* Floating button */}
+      {/* Floating button — hidden on mobile when widget is open (full-screen overlay covers it) */}
       <button
         onClick={handleButtonClick}
         aria-label={t('chat.btn_label')}
-        className={`fixed z-40 flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all hover:scale-105 active:scale-95 ${
-          isRTL ? 'left-4' : 'right-4'
-        }`}
+        className={`
+          fixed z-40 items-center gap-2
+          bg-blue-600 hover:bg-blue-700 text-white
+          rounded-full shadow-lg transition-all hover:scale-105 active:scale-95
+          ${isRTL ? 'left-4' : 'right-4'}
+          ${widgetOpen ? 'hidden sm:flex' : 'flex'}
+        `}
         style={{ bottom: '24px' }}
       >
         <div className="flex items-center gap-2 px-4 py-3">

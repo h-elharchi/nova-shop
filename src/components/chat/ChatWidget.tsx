@@ -34,9 +34,17 @@ export function ChatWidget({
     : 'gray'
 
   return (
+    /*
+     * Mobile  : h-full w-full, coins non arrondis (le conteneur est inset-0)
+     * Desktop : dimensions fixes, coins arrondis, ombre
+     */
     <div
-      className="flex flex-col bg-white dark:bg-dark-surface rounded-2xl shadow-2xl border border-gray-100 dark:border-dark-border overflow-hidden"
-      style={{ width: 'min(340px, calc(100vw - 24px))', height: 'min(520px, calc(100vh - 120px))' }}
+      className="
+        flex flex-col bg-white dark:bg-dark-surface overflow-hidden
+        h-full w-full
+        sm:rounded-2xl sm:shadow-2xl sm:border sm:border-gray-100 sm:dark:border-dark-border
+        sm:w-[340px] sm:h-[520px] sm:max-h-[calc(100vh-120px)]
+      "
     >
       <ChatHeader
         onClose={onResetToIdle}
@@ -53,7 +61,7 @@ export function ChatWidget({
 
       {widgetState === 'connecting' && (
         <div className="flex-1 flex items-center justify-center">
-          <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-[3px] border-blue-600 border-t-transparent rounded-full animate-spin" />
         </div>
       )}
 

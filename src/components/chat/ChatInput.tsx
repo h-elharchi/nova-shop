@@ -49,14 +49,14 @@ export function ChatInput({ onSend, disabled = false, sending = false }: ChatInp
         rows={1}
         dir={isRTL ? 'rtl' : 'ltr'}
         aria-label={t('chat.placeholder_message')}
-        className="flex-1 resize-none text-sm bg-gray-50 dark:bg-dark-card text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 rounded-xl px-3 py-2 border border-gray-200 dark:border-dark-border focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 transition-colors overflow-hidden"
-        style={{ minHeight: '38px', maxHeight: '100px' }}
+        className="flex-1 resize-none text-base sm:text-sm bg-gray-50 dark:bg-dark-card text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 rounded-xl px-3 py-2 border border-gray-200 dark:border-dark-border focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 transition-colors overflow-hidden"
+        style={{ minHeight: '42px', maxHeight: '100px' }}
       />
       <button
         onClick={handleSend}
         disabled={!value.trim() || disabled || sending}
         aria-label={t('chat.send')}
-        className="w-9 h-9 shrink-0 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 dark:disabled:bg-gray-700 text-white disabled:text-gray-400 rounded-xl flex items-center justify-center transition-colors"
+        className="w-11 h-11 sm:w-9 sm:h-9 shrink-0 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-gray-200 dark:disabled:bg-gray-700 text-white disabled:text-gray-400 rounded-xl flex items-center justify-center transition-colors"
       >
         <Send className="w-4 h-4" />
       </button>
