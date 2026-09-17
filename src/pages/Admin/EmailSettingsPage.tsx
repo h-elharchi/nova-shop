@@ -15,17 +15,23 @@ export function EmailSettingsPage() {
   const [oauthAccount, setOauthAccount] = useState('')
 
   // Détecter le retour du flux OAuth
+  // HashRouter : les params sont dans window.location.hash (ex: #/admin/email-settings?oauth_success=1)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
+    const hash = window.location.hash           // "#/admin/email-settings?oauth_success=1&account=..."
+    const qIdx = hash.indexOf('?')
+    if (qIdx === -1) return
+
+    const params   = new URLSearchParams(hash.slice(qIdx))
+    const cleanHash = hash.slice(0, qIdx)       // "#/admin/email-settings"
+
     if (params.get('oauth_success')) {
       setOauthStatus('success')
       setOauthAccount(params.get('account') ?? '')
-      // Nettoyer l'URL
-      window.history.replaceState({}, '', window.location.pathname + window.location.hash)
+      window.history.replaceState({}, '', window.location.pathname + cleanHash)
       refetch()
     } else if (params.get('oauth_error')) {
       setOauthStatus('error')
-      window.history.replaceState({}, '', window.location.pathname + window.location.hash)
+      window.history.replaceState({}, '', window.location.pathname + cleanHash)
     }
   }, [refetch])
 

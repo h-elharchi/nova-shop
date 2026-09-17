@@ -24,12 +24,12 @@ export async function disconnectEmailAccount(accountId: string): Promise<void> {
 // ─── OAuth2 — récupérer l'URL de connexion ────────────────────
 
 export async function getGmailAuthUrl(label: string): Promise<string> {
-  const session = await supabase.auth.getSession()
-  const token   = session.data.session?.access_token
-  if (!token) throw new Error('Not authenticated')
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) throw new Error('Not authenticated')
 
   const { data, error } = await supabase.functions.invoke('gmail-oauth-callback', {
     body: { action: 'get_auth_url', label },
+    headers: { Authorization: `Bearer ${session.access_token}` },
   })
 
   if (error) throw new Error(error.message)
@@ -39,7 +39,11 @@ export async function getGmailAuthUrl(label: string): Promise<string> {
 // ─── Sync manuelle ────────────────────────────────────────────
 
 export async function triggerEmailSync(): Promise<{ synced: number; accounts: number }> {
-  const { data, error } = await supabase.functions.invoke('gmail-sync', { body: {} })
+  const { data: { session } } = await supabase.auth.getSession()
+  const { data, error } = await supabase.functions.invoke('gmail-sync', {
+    body: {},
+    headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+  })
   if (error) throw new Error(error.message)
   return data as { synced: number; accounts: number }
 }
@@ -102,6 +106,10 @@ export interface SendEmailParams {
 }
 
 export async function sendEmail(params: SendEmailParams): Promise<void> {
-  const { error } = await supabase.functions.invoke('gmail-send', { body: params })
+  const { data: { session } } = await supabase.auth.getSession()
+  const { error } = await supabase.functions.invoke('gmail-send', {
+    body: params,
+    headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+  })
   if (error) throw new Error(error.message)
 }

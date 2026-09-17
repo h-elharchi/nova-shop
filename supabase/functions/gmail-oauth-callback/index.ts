@@ -135,35 +135,66 @@ Deno.serve(async (req: Request) => {
       return Response.redirect(`${frontendBase}?oauth_error=no_refresh_token`, 302)
     }
 
-    // Récupérer l'adresse Gmail depuis l'API
-    const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+    // Récupérer l'adresse Gmail via l'API Gmail Profile (le scope userinfo.email n'est pas demandé)
+    const profileRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     })
-    const googleProfile = await profileRes.json() as { email: string }
-    const gmailAddress = googleProfile.email
+    if (!profileRes.ok) {
+      console.error('[gmail-oauth] profile fetch failed:', await profileRes.text())
+      return Response.redirect(`${frontendBase}?oauth_error=profile_fetch_failed`, 302)
+    }
+    const googleProfile = await profileRes.json() as { emailAddress: string }
+    const gmailAddress = googleProfile.emailAddress
 
-    // Stocker le refresh token dans le Vault
-    const { data: vaultId, error: vaultErr } = await adminClient.rpc('store_vault_secret', {
-      p_value: tokens.refresh_token,
-      p_name:  `gmail_refresh_${gmailAddress}`,
-    })
-
-    if (vaultErr) {
-      console.error('[gmail-oauth] vault error:', vaultErr)
-      return Response.redirect(`${frontendBase}?oauth_error=vault_error`, 302)
+    if (!gmailAddress) {
+      console.error('[gmail-oauth] emailAddress missing in profile response', googleProfile)
+      return Response.redirect(`${frontendBase}?oauth_error=email_missing`, 302)
     }
 
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+
+    // Vérifier si un compte existe déjà pour cet email
+    const { data: existing } = await adminClient
+      .from('email_accounts')
+      .select('id, vault_refresh_token')
+      .eq('gmail_address', gmailAddress)
+      .maybeSingle()
+
+    let vaultId: string
+
+    if (existing?.vault_refresh_token) {
+      // Mettre à jour le secret existant dans le Vault
+      const { error: updateErr } = await adminClient.rpc('update_vault_secret', {
+        p_id:       existing.vault_refresh_token,
+        p_new_value: tokens.refresh_token,
+      })
+      if (updateErr) {
+        console.error('[gmail-oauth] vault update error:', updateErr)
+        return Response.redirect(`${frontendBase}?oauth_error=vault_error`, 302)
+      }
+      vaultId = existing.vault_refresh_token
+    } else {
+      // Créer un nouveau secret dans le Vault (nom unique via UUID)
+      const { data: newVaultId, error: vaultErr } = await adminClient.rpc('store_vault_secret', {
+        p_value: tokens.refresh_token,
+        p_name:  `gmail_refresh_${gmailAddress}_${crypto.randomUUID()}`,
+      })
+      if (vaultErr) {
+        console.error('[gmail-oauth] vault create error:', vaultErr)
+        return Response.redirect(`${frontendBase}?oauth_error=vault_error`, 302)
+      }
+      vaultId = newVaultId
+    }
 
     // Créer ou mettre à jour le compte email
     const { error: upsertErr } = await adminClient
       .from('email_accounts')
       .upsert({
         label,
-        gmail_address:        gmailAddress,
-        vault_refresh_token:  vaultId,
-        token_expires_at:     expiresAt,
-        is_active:            true,
+        gmail_address:       gmailAddress,
+        vault_refresh_token: vaultId,
+        token_expires_at:    expiresAt,
+        is_active:           true,
       }, { onConflict: 'gmail_address' })
 
     if (upsertErr) {
