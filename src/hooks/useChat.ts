@@ -7,7 +7,6 @@ import {
   clearChatSession,
   checkAgentsOnline,
   assignToAvailableAdmin,
-  timeoutConversation,
   getConversation,
 } from '../lib/chat'
 import { validateMoroccanPhone, normalizePhone } from './useOrders'
@@ -211,7 +210,7 @@ export function useChat() {
 
     agentWatchChannelRef.current = agentChannel
 
-    countdownRef.current = setInterval(async () => {
+    countdownRef.current = setInterval(() => {
       remaining -= 1
       if (!mounted.current) return
       setCountdown(remaining)
@@ -219,9 +218,10 @@ export function useChat() {
       if (remaining <= 0) {
         stopCountdown()
         if (!mounted.current) return
-        await timeoutConversation(convId)
-        clearChatSession()
-        setWidgetState('timeout')
+        // La conversation reste en 'waiting' dans la DB — le workspace
+        // la distribuera dès qu'un agent sera disponible.
+        // On bascule en mode file d'attente sans effacer la session.
+        setWidgetState('waiting')
       }
     }, 1000)
   }, [stopCountdown])
