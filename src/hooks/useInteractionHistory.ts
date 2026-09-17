@@ -59,11 +59,12 @@ export function useInteractionHistory() {
       let q = supabase
         .from('interactions')
         .select(
-          `id, channel, status, subject, source_id, queued_at, assigned_at, closed_at,
-           wrap_up_seconds, internal_notes, outcome,
+          `id, channel, status, subject, queued_at, assigned_at, closed_at,
+           wrap_up_seconds, wrap_up_notes, outcome,
            customers!customer_id(first_name, last_name, phone, email, customer_number),
            profiles!assigned_agent_id(first_name, last_name),
-           crc_disposition_codes!disposition_code_id(code, name_fr, name_ar)`,
+           crc_disposition_codes!disposition_code_id(code, name_fr, name_ar),
+           chat_conversations!interaction_id(id)`,
           { count: 'exact' }
         )
         .in('status', ['closed', 'wrap_up', 'active', 'assigned', 'queued', 'offered'])
@@ -84,20 +85,22 @@ export function useInteractionHistory() {
       if (err) throw err
 
       const mapped: InteractionHistoryItem[] = (data ?? []).map((row: Record<string, unknown>) => {
-        const c = row.customers as Record<string, string | null> | null
-        const a = row.profiles  as Record<string, string | null> | null
-        const d = row.crc_disposition_codes as Record<string, string | null> | null
+        const c    = row.customers as Record<string, string | null> | null
+        const a    = row.profiles  as Record<string, string | null> | null
+        const d    = row.crc_disposition_codes as Record<string, string | null> | null
+        const conv = row.chat_conversations as { id: string } | { id: string }[] | null
+        const convId = Array.isArray(conv) ? (conv[0]?.id ?? null) : (conv?.id ?? null)
         return {
           id:                   row.id as string,
           channel:              row.channel as InteractionChannel,
           status:               row.status as string,
           subject:              row.subject as string | null,
-          source_id:            row.source_id as string | null,
+          source_id:            convId,
           queued_at:            row.queued_at as string,
           assigned_at:          row.assigned_at as string | null,
           closed_at:            row.closed_at as string | null,
           wrap_up_seconds:      row.wrap_up_seconds as number | null,
-          internal_notes:       row.internal_notes as string | null,
+          internal_notes:       row.wrap_up_notes as string | null,
           outcome:              row.outcome as string | null,
           customer_first_name:  c?.first_name ?? null,
           customer_last_name:   c?.last_name  ?? null,
