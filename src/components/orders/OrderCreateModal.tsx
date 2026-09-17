@@ -61,14 +61,6 @@ export function OrderCreateModal({ onClose, onSuccess, prefillPhone, prefillCust
       .then(({ data }) => setProducts((data ?? []) as typeof products))
   }, [])
 
-  useEffect(() => {
-    if (prefillCustomer) {
-      setFirstName(prefillCustomer.first_name)
-      setLastName(prefillCustomer.last_name)
-      setPhone(prefillCustomer.phone)
-    }
-  }, [prefillCustomer])
-
   async function handlePhoneBlur() {
     if (!phone.trim()) return
     const normalized = normalizePhone(phone)
