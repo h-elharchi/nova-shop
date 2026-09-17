@@ -33,11 +33,12 @@ const STATUS_COLORS: Record<string, string> = {
 
 // ─── Modal archive ────────────────────────────────────────────
 
-function ArchiveModal({ customer, onConfirm, onClose, t }: {
+function ArchiveModal({ customer, onConfirm, onClose, t, error }: {
   customer: CustomerView
   onConfirm: (reason: string) => void
   onClose: () => void
   t: (k: string) => string
+  error?: string | null
 }) {
   const [reason, setReason] = useState('')
   return (
@@ -51,6 +52,9 @@ function ArchiveModal({ customer, onConfirm, onClose, t }: {
           placeholder={t('customers_v2.archive_reason')}
           className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
         />
+        {error && (
+          <p className="text-xs text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>
+        )}
         <div className="flex gap-2 justify-end">
           <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:underline">{t('common.cancel')}</button>
           <button onClick={() => onConfirm(reason)} className="px-4 py-1.5 text-sm font-medium bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg">{t('customers_v2.archive')}</button>
@@ -62,11 +66,12 @@ function ArchiveModal({ customer, onConfirm, onClose, t }: {
 
 // ─── Modal delete ─────────────────────────────────────────────
 
-function DeleteModal({ customer, onConfirm, onClose, t }: {
+function DeleteModal({ customer, onConfirm, onClose, t, error }: {
   customer: CustomerView
   onConfirm: (reason: string) => void
   onClose: () => void
   t: (k: string) => string
+  error?: string | null
 }) {
   const [reason, setReason] = useState('')
   return (
@@ -86,6 +91,9 @@ function DeleteModal({ customer, onConfirm, onClose, t }: {
             required
           />
         </div>
+        {error && (
+          <p className="text-xs text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>
+        )}
         <div className="flex gap-2 justify-end">
           <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:underline">{t('common.cancel')}</button>
           <button
@@ -196,6 +204,8 @@ function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: Custo
   const [showArchive, setShowArchive] = useState(false)
   const [showDelete, setShowDelete]   = useState(false)
   const [actionMsg, setActionMsg] = useState('')
+  const [archiveError, setArchiveError] = useState<string | null>(null)
+  const [deleteError, setDeleteError]   = useState<string | null>(null)
 
   useEffect(() => {
     supabase
@@ -214,20 +224,24 @@ function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: Custo
   }
 
   async function handleArchive(reason: string) {
-    const ok = await archiveCustomer(customer.id, reason)
-    if (ok) { onUpdated(); onClose() }
+    setArchiveError(null)
+    const { ok, error: err } = await archiveCustomer(customer.id, reason)
+    if (ok) { onUpdated(); onClose() } else { setArchiveError(err) }
   }
 
   async function handleRestore() {
-    const ok = await restoreCustomer(customer.id)
+    const { ok } = await restoreCustomer(customer.id)
     if (ok) { onUpdated(); onClose() }
   }
 
   async function handleDelete(reason: string) {
-    const result = await deleteCustomer(customer.id, reason)
+    setDeleteError(null)
+    const { result, error: err } = await deleteCustomer(customer.id, reason)
     if (result) {
-      setActionMsg(result === 'anonymized' ? 'Anonymisé' : 'Supprimé')
+      setActionMsg(result === 'anonymized' ? t('customers_v2.anonymized') : t('customers_v2.deleted'))
       setTimeout(() => { onUpdated(); onClose() }, 1500)
+    } else {
+      setDeleteError(err)
     }
   }
 
@@ -398,10 +412,10 @@ function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: Custo
       )}
 
       {showArchive && (
-        <ArchiveModal customer={customer} onConfirm={handleArchive} onClose={() => setShowArchive(false)} t={t} />
+        <ArchiveModal customer={customer} onConfirm={handleArchive} onClose={() => { setShowArchive(false); setArchiveError(null) }} t={t} error={archiveError} />
       )}
       {showDelete && (
-        <DeleteModal customer={customer} onConfirm={handleDelete} onClose={() => setShowDelete(false)} t={t} />
+        <DeleteModal customer={customer} onConfirm={handleDelete} onClose={() => { setShowDelete(false); setDeleteError(null) }} t={t} error={deleteError} />
       )}
     </div>
   )

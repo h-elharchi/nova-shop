@@ -19,11 +19,10 @@ import { AdminCategoriesPage } from './pages/Admin/CategoriesPage'
 import { AdminOrdersPage } from './pages/Admin/OrdersPage'
 import { AdminAccountPage } from './pages/Admin/AccountPage'
 import { AdminUsersPage } from './pages/Admin/UsersPage'
-import { CRCSettingsPage } from './pages/Admin/CRCSettingsPage'
+import { SettingsPage } from './pages/Admin/SettingsPage'
 import { SupervisionPage } from './pages/Admin/SupervisionPage'
 import { HistoryPage } from './pages/Admin/HistoryPage'
 import { CustomersPage } from './pages/Admin/CustomersPage'
-import { EmailSettingsPage } from './pages/Admin/EmailSettingsPage'
 import { WorkspacePage } from './pages/Admin/WorkspacePage'
 import { SetPasswordPage } from './pages/SetPasswordPage'
 import { ProtectedRoute } from './pages/Admin/ProtectedRoute'
@@ -78,12 +77,15 @@ function AppContent() {
           <Route path="/admin/categories"        element={<ProtectedRoute requiredRole="admin"><AdminCategoriesPage /></ProtectedRoute>} />
           <Route path="/admin/users"             element={<ProtectedRoute requiredRole="admin"><AdminUsersPage /></ProtectedRoute>} />
           <Route path="/admin/supervision"       element={<ProtectedRoute requiredRole="admin"><SupervisionPage /></ProtectedRoute>} />
-          <Route path="/admin/crc-settings"      element={<ProtectedRoute requiredRole="admin"><CRCSettingsPage /></ProtectedRoute>} />
+          <Route path="/admin/settings"          element={<Navigate to="/admin/settings/general" replace />} />
+          <Route path="/admin/settings/:section" element={<ProtectedRoute requiredRole="admin"><SettingsPage /></ProtectedRoute>} />
+          {/* Redirections anciennes URLs → nouvelles */}
+          <Route path="/admin/crc-settings"      element={<Navigate to="/admin/settings/pause" replace />} />
+          <Route path="/admin/email-settings"    element={<Navigate to="/admin/settings/email" replace />} />
 
           {/* Admin — routes protégées (agent + admin) */}
           <Route path="/admin/history"        element={<ProtectedRoute requiredRole="agent"><HistoryPage /></ProtectedRoute>} />
           <Route path="/admin/customers"      element={<ProtectedRoute requiredRole="agent"><CustomersPage /></ProtectedRoute>} />
-          <Route path="/admin/email-settings" element={<ProtectedRoute requiredRole="admin"><EmailSettingsPage /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

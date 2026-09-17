@@ -2,6 +2,7 @@ import { useState, useEffect, FormEvent } from 'react'
 import { X, CheckCircle, ShoppingBag } from 'lucide-react'
 import { useI18n } from '../../context/LanguageContext'
 import { useCreateOrder, validateMoroccanPhone } from '../../hooks/useOrders'
+import { MOROCCAN_CITIES } from '../../lib/moroccanCities'
 import type { Product } from '../../types'
 
 interface Props {
@@ -11,9 +12,7 @@ interface Props {
 
 const inputCls = (hasError: boolean) =>
   `w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 ${
-    hasError
-      ? 'border-red-400 dark:border-red-500'
-      : 'border-gray-200 dark:border-gray-600'
+    hasError ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-600'
   }`
 
 export function OrderModal({ product, onClose }: Props) {
@@ -23,9 +22,16 @@ export function OrderModal({ product, onClose }: Props) {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName]   = useState('')
   const [phone, setPhone]         = useState('')
-  const [errors, setErrors] = useState<{ firstName?: string; lastName?: string; phone?: string }>({})
+  const [email, setEmail]         = useState('')
+  const [city, setCity]           = useState('')
+  const [address, setAddress]     = useState('')
+  const [district, setDistrict]   = useState('')
+  const [landmark, setLandmark]   = useState('')
+  const [errors, setErrors] = useState<{
+    firstName?: string; lastName?: string; phone?: string; city?: string; address?: string
+  }>({})
 
-  const name = lang === 'ar' ? product.name_ar : product.name_fr
+  const name      = lang === 'ar' ? product.name_ar : product.name_fr
   const mainImage = product.images?.[0]?.image_url
 
   useEffect(() => {
@@ -44,6 +50,8 @@ export function OrderModal({ product, onClose }: Props) {
     if (firstName.trim().length < 2) errs.firstName = t('order.error_first_name')
     if (lastName.trim().length < 2)  errs.lastName  = t('order.error_last_name')
     if (!validateMoroccanPhone(phone)) errs.phone   = t('order.error_phone')
+    if (!city.trim())    errs.city    = t('order.error_city')
+    if (!address.trim()) errs.address = t('order.error_address')
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -51,17 +59,22 @@ export function OrderModal({ product, onClose }: Props) {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!validate()) return
-    await createOrder({ productId: product.id, firstName, lastName, phone })
+    await createOrder({
+      productId: product.id,
+      firstName, lastName, phone,
+      email: email || undefined,
+      deliveryCity: city,
+      deliveryAddress: address,
+      deliveryDistrict: district || undefined,
+      deliveryLandmark: landmark || undefined,
+    })
   }
 
   const handleClose = () => { reset(); onClose() }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      {/* Overlay */}
       <div className="absolute inset-0 bg-black/60" onClick={handleClose} />
-
-      {/* Panel */}
       <div
         dir={isRTL ? 'rtl' : 'ltr'}
         className="relative w-full sm:max-w-md bg-white dark:bg-dark-card rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[95vh] overflow-y-auto transition-colors duration-200"
@@ -69,10 +82,7 @@ export function OrderModal({ product, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-dark-border sticky top-0 bg-white dark:bg-dark-card rounded-t-2xl z-10">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t('order.title')}</h2>
-          <button
-            onClick={handleClose}
-            className="p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-          >
+          <button onClick={handleClose} className="p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -83,10 +93,7 @@ export function OrderModal({ product, onClose }: Props) {
               <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
               <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{t('order.success_title')}</h3>
               <p className="text-gray-500 dark:text-gray-400">{t('order.success_msg')}</p>
-              <button
-                onClick={handleClose}
-                className="mt-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3 rounded-xl transition-colors"
-              >
+              <button onClick={handleClose} className="mt-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3 rounded-xl transition-colors">
                 {t('forms.cancel')}
               </button>
             </div>
@@ -110,57 +117,60 @@ export function OrderModal({ product, onClose }: Props) {
                 </div>
               </div>
 
-              {/* Global error */}
               {error && (
-                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm px-3 py-2 rounded-lg">
-                  {error}
-                </div>
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm px-3 py-2 rounded-lg">{error}</div>
               )}
 
-              {/* Form */}
               <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Identité */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('order.first_name')}</label>
-                  <input
-                    type="text"
-                    value={firstName}
-                    onChange={e => setFirstName(e.target.value)}
-                    placeholder={t('order.placeholder_first_name')}
-                    className={inputCls(!!errors.firstName)}
-                  />
+                  <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder={t('order.placeholder_first_name')} className={inputCls(!!errors.firstName)} />
                   {errors.firstName && <p className="text-red-500 dark:text-red-400 text-xs mt-1">{errors.firstName}</p>}
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('order.last_name')}</label>
-                  <input
-                    type="text"
-                    value={lastName}
-                    onChange={e => setLastName(e.target.value)}
-                    placeholder={t('order.placeholder_last_name')}
-                    className={inputCls(!!errors.lastName)}
-                  />
+                  <input type="text" value={lastName} onChange={e => setLastName(e.target.value)} placeholder={t('order.placeholder_last_name')} className={inputCls(!!errors.lastName)} />
                   {errors.lastName && <p className="text-red-500 dark:text-red-400 text-xs mt-1">{errors.lastName}</p>}
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('order.phone')}</label>
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={e => setPhone(e.target.value)}
-                    placeholder={t('order.placeholder_phone')}
-                    className={inputCls(!!errors.phone)}
-                    dir="ltr"
-                  />
+                  <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder={t('order.placeholder_phone')} className={inputCls(!!errors.phone)} dir="ltr" />
                   {errors.phone && <p className="text-red-500 dark:text-red-400 text-xs mt-1">{errors.phone}</p>}
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('order.email_optional')}</label>
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={t('order.placeholder_email')} className={inputCls(false)} dir="ltr" />
+                </div>
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 disabled:opacity-50 text-white font-bold py-4 rounded-xl transition-colors text-base"
-                >
+                {/* Livraison */}
+                <div className="pt-1 space-y-4">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{t('order.delivery_section')}</p>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('order.delivery_city')} *</label>
+                    <input type="text" value={city} onChange={e => setCity(e.target.value)} list="cities-list" placeholder={t('order.placeholder_city')} className={inputCls(!!errors.city)} />
+                    <datalist id="cities-list">
+                      {MOROCCAN_CITIES.map(c => <option key={c} value={c} />)}
+                    </datalist>
+                    {errors.city && <p className="text-red-500 dark:text-red-400 text-xs mt-1">{errors.city}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('order.delivery_address')} *</label>
+                    <input type="text" value={address} onChange={e => setAddress(e.target.value)} placeholder={t('order.placeholder_address')} className={inputCls(!!errors.address)} />
+                    {errors.address && <p className="text-red-500 dark:text-red-400 text-xs mt-1">{errors.address}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('order.delivery_district')}</label>
+                    <input type="text" value={district} onChange={e => setDistrict(e.target.value)} placeholder={t('order.placeholder_district')} className={inputCls(false)} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('order.delivery_landmark')}</label>
+                    <input type="text" value={landmark} onChange={e => setLandmark(e.target.value)} placeholder={t('order.placeholder_landmark')} className={inputCls(false)} />
+                  </div>
+                </div>
+
+                <button type="submit" disabled={loading}
+                  className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 disabled:opacity-50 text-white font-bold py-4 rounded-xl transition-colors text-base">
                   {loading ? t('order.saving') : t('order.submit')}
                 </button>
               </form>

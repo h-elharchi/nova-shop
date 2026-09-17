@@ -119,11 +119,16 @@ export interface Order {
   customer_first_name: string
   customer_last_name: string
   customer_phone: string
+  customer_email: string | null
   customer_id: string | null
   channel: OrderChannel
   assigned_agent_id: string | null
   notes: string | null
   callback_at: string | null
+  delivery_city: string | null
+  delivery_address: string | null
+  delivery_district: string | null
+  delivery_landmark: string | null
   status: OrderStatus
   created_at: string
   updated_at: string

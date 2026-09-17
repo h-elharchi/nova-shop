@@ -18,6 +18,11 @@ interface CreateOrderParams {
   firstName: string
   lastName: string
   phone: string
+  email?: string
+  deliveryCity?: string
+  deliveryAddress?: string
+  deliveryDistrict?: string
+  deliveryLandmark?: string
 }
 
 export function useCreateOrder() {
@@ -50,8 +55,13 @@ export function useCreateOrder() {
       customer_first_name:  params.firstName.trim(),
       customer_last_name:   params.lastName.trim(),
       customer_phone:       normalizePhone(params.phone),
+      customer_email:       params.email?.trim() || null,
       channel:              'site',
       status:               'new',
+      delivery_city:        params.deliveryCity?.trim() || null,
+      delivery_address:     params.deliveryAddress?.trim() || null,
+      delivery_district:    params.deliveryDistrict?.trim() || null,
+      delivery_landmark:    params.deliveryLandmark?.trim() || null,
     })
 
     if (insertErr) {
@@ -78,6 +88,11 @@ interface CreateOrderAdminParams {
   firstName: string
   lastName: string
   phone: string
+  email?: string
+  deliveryCity?: string
+  deliveryAddress?: string
+  deliveryDistrict?: string
+  deliveryLandmark?: string
   notes?: string
   callbackAt?: string
 }
@@ -91,13 +106,18 @@ export function useCreateOrderAdmin() {
     setError(null)
 
     const { data, error: rpcErr } = await supabase.rpc('create_order_admin', {
-      p_product_id:  params.productId,
-      p_channel:     params.channel,
-      p_first_name:  params.firstName.trim(),
-      p_last_name:   params.lastName.trim(),
-      p_phone:       normalizePhone(params.phone),
-      p_notes:       params.notes?.trim() || null,
-      p_callback_at: params.callbackAt || null,
+      p_product_id:        params.productId,
+      p_channel:           params.channel,
+      p_first_name:        params.firstName.trim(),
+      p_last_name:         params.lastName.trim(),
+      p_phone:             normalizePhone(params.phone),
+      p_email:             params.email?.trim() || null,
+      p_delivery_city:     params.deliveryCity?.trim() || null,
+      p_delivery_address:  params.deliveryAddress?.trim() || null,
+      p_delivery_district: params.deliveryDistrict?.trim() || null,
+      p_delivery_landmark: params.deliveryLandmark?.trim() || null,
+      p_notes:             params.notes?.trim() || null,
+      p_callback_at:       params.callbackAt || null,
     })
 
     if (rpcErr) {
@@ -120,6 +140,7 @@ interface OrderFilters {
   channel?:  OrderChannel | ''
   agentId?:  string
   search?:   string
+  city?:     string
   dateFrom?: string
   dateTo?:   string
 }
@@ -141,6 +162,7 @@ export function useOrders(filters: OrderFilters = {}) {
     if (filters.status)  query = query.eq('status',  filters.status)
     if (filters.channel) query = query.eq('channel', filters.channel)
     if (filters.agentId) query = query.eq('assigned_agent_id', filters.agentId)
+    if (filters.city?.trim()) query = query.ilike('delivery_city', `%${filters.city.trim()}%`)
 
     if (filters.search?.trim()) {
       const s = `%${filters.search.trim()}%`
@@ -163,7 +185,7 @@ export function useOrders(filters: OrderFilters = {}) {
       setOrders((data ?? []) as Order[])
     }
     setLoading(false)
-  }, [filters.status, filters.channel, filters.agentId, filters.search, filters.dateFrom, filters.dateTo])
+  }, [filters.status, filters.channel, filters.agentId, filters.search, filters.city, filters.dateFrom, filters.dateTo])
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
 

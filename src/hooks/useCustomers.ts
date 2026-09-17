@@ -113,34 +113,34 @@ export function useCustomers(filters: CustomerFilters = {}) {
     return data as CustomerView
   }, [fetch])
 
-  const archiveCustomer = useCallback(async (customerId: string, reason?: string): Promise<boolean> => {
+  const archiveCustomer = useCallback(async (customerId: string, reason?: string): Promise<{ ok: boolean; error: string | null }> => {
     const { error: err } = await supabase.rpc('archive_customer', {
       p_customer_id: customerId,
       p_reason:      reason ?? null,
     })
     if (!err) await fetch()
-    return !err
+    return { ok: !err, error: err?.message ?? null }
   }, [fetch])
 
-  const restoreCustomer = useCallback(async (customerId: string): Promise<boolean> => {
+  const restoreCustomer = useCallback(async (customerId: string): Promise<{ ok: boolean; error: string | null }> => {
     const { error: err } = await supabase.rpc('restore_customer', {
       p_customer_id: customerId,
     })
     if (!err) await fetch()
-    return !err
+    return { ok: !err, error: err?.message ?? null }
   }, [fetch])
 
   const deleteCustomer = useCallback(async (
     customerId: string,
     reason: string,
-  ): Promise<'deleted' | 'anonymized' | null> => {
+  ): Promise<{ result: 'deleted' | 'anonymized' | null; error: string | null }> => {
     const { data, error: err } = await supabase.rpc('delete_customer', {
       p_customer_id: customerId,
       p_reason:      reason,
     })
-    if (err) return null
+    if (err) return { result: null, error: err.message }
     await fetch()
-    return data as 'deleted' | 'anonymized'
+    return { result: data as 'deleted' | 'anonymized', error: null }
   }, [fetch])
 
   const checkDuplicate = useCallback(async (

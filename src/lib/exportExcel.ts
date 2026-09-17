@@ -32,6 +32,9 @@ export interface ExportHeaders {
   firstname: string
   lastname: string
   phone: string
+  email: string
+  city: string
+  address: string
   status: string
 }
 
@@ -49,6 +52,9 @@ export function exportOrdersToExcel(
     headers.firstname,
     headers.lastname,
     headers.phone,
+    headers.email,
+    headers.city,
+    headers.address,
     headers.status,
   ]
 
@@ -60,6 +66,9 @@ export function exportOrdersToExcel(
     o.customer_first_name,
     o.customer_last_name,
     o.customer_phone,
+    o.customer_email ?? '',
+    o.delivery_city ?? '',
+    o.delivery_address ?? '',
     statusLabel(o.status, lang),
   ])
 
@@ -74,6 +83,9 @@ export function exportOrdersToExcel(
     { wch: 15 }, // Firstname
     { wch: 15 }, // Lastname
     { wch: 16 }, // Phone
+    { wch: 22 }, // Email
+    { wch: 18 }, // City
+    { wch: 30 }, // Address
     { wch: 15 }, // Status
   ]
 

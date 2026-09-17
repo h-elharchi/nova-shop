@@ -115,6 +115,8 @@ export function AdminOrdersPage() {
   const [customFrom, setCustomFrom]       = useState('')
   const [customTo, setCustomTo]           = useState('')
   const [productFilter, setProductFilter] = useState('')
+  const [cityFilter, setCityFilter]       = useState('')
+  const [cityInput, setCityInput]         = useState('')
   const [page, setPage]                   = useState(1)
   const [exporting, setExporting]         = useState(false)
   const [exportMsg, setExportMsg]         = useState<string | null>(null)
@@ -125,6 +127,11 @@ export function AdminOrdersPage() {
     return () => clearTimeout(timer)
   }, [searchInput])
 
+  useEffect(() => {
+    const timer = setTimeout(() => setCityFilter(cityInput), 400)
+    return () => clearTimeout(timer)
+  }, [cityInput])
+
   const { dateFrom, dateTo } = useMemo(
     () => computeDateRange(datePeriod, customFrom, customTo),
     [datePeriod, customFrom, customTo]
@@ -134,6 +141,7 @@ export function AdminOrdersPage() {
     status:   statusFilter,
     channel:  channelFilter,
     search,
+    city:     cityFilter,
     dateFrom,
     dateTo,
   })
@@ -148,7 +156,7 @@ export function AdminOrdersPage() {
     [orders, productFilter]
   )
 
-  useEffect(() => { setPage(1) }, [statusFilter, channelFilter, search, productFilter, dateFrom, dateTo])
+  useEffect(() => { setPage(1) }, [statusFilter, channelFilter, search, cityFilter, productFilter, dateFrom, dateTo])
 
   const paginatedOrders = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE
@@ -156,11 +164,12 @@ export function AdminOrdersPage() {
   }, [filteredOrders, page])
 
   const totalPages     = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE))
-  const hasActiveFilters = !!(statusFilter || channelFilter || searchInput || productFilter || datePeriod !== 'all')
+  const hasActiveFilters = !!(statusFilter || channelFilter || searchInput || cityInput || productFilter || datePeriod !== 'all')
 
   const resetFilters = useCallback(() => {
     setStatusFilter(''); setChannelFilter(''); setSearchInput(''); setSearch('')
-    setProductFilter(''); setDatePeriod('all'); setCustomFrom(''); setCustomTo(''); setPage(1)
+    setProductFilter(''); setCityFilter(''); setCityInput('')
+    setDatePeriod('all'); setCustomFrom(''); setCustomTo(''); setPage(1)
   }, [])
 
   const handleExport = useCallback(async () => {
@@ -175,7 +184,9 @@ export function AdminOrdersPage() {
           id: t('order.excel_id'), date: t('order.excel_date'),
           product: t('order.excel_product'), price: t('order.excel_price'),
           firstname: t('order.excel_firstname'), lastname: t('order.excel_lastname'),
-          phone: t('order.excel_phone'), status: t('order.excel_status'),
+          phone: t('order.excel_phone'), email: t('order.excel_email'),
+          city: t('order.excel_city'), address: t('order.excel_address'),
+          status: t('order.excel_status'),
         },
         lang,
         filename
@@ -238,7 +249,19 @@ export function AdminOrdersPage() {
           />
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {/* Ville */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('order.filter_city')}</label>
+            <input
+              type="text"
+              placeholder={t('order.placeholder_filter_city')}
+              value={cityInput}
+              onChange={e => setCityInput(e.target.value)}
+              className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition placeholder:text-gray-400"
+            />
+          </div>
+
           {/* Statut */}
           <div>
             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('order.filter_status')}</label>
@@ -366,6 +389,12 @@ export function AdminOrdersPage() {
                     <p className="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300">
                       {order.customer_first_name} {order.customer_last_name}
                     </p>
+
+                    {order.delivery_city && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        📍 {order.delivery_city}{order.delivery_address ? ` — ${order.delivery_address}` : ''}
+                      </p>
+                    )}
 
                     {order.notes && (
                       <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 italic truncate">{order.notes}</p>

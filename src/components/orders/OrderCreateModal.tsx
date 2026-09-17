@@ -3,6 +3,7 @@ import { X, Search, User } from 'lucide-react'
 import { useI18n } from '../../context/LanguageContext'
 import { useCreateOrderAdmin, validateMoroccanPhone, normalizePhone } from '../../hooks/useOrders'
 import { useCustomers } from '../../hooks/useCustomers'
+import { MOROCCAN_CITIES } from '../../lib/moroccanCities'
 import { supabase } from '../../lib/supabase'
 import type { Product, OrderChannel } from '../../types'
 
@@ -37,6 +38,11 @@ export function OrderCreateModal({ onClose, onSuccess, prefillPhone, prefillCust
   const [phone, setPhone]             = useState(prefillPhone ?? prefillCustomer?.phone ?? '')
   const [firstName, setFirstName]     = useState(prefillCustomer?.first_name ?? '')
   const [lastName, setLastName]       = useState(prefillCustomer?.last_name ?? '')
+  const [email, setEmail]             = useState('')
+  const [city, setCity]               = useState('')
+  const [address, setAddress]         = useState('')
+  const [district, setDistrict]       = useState('')
+  const [landmark, setLandmark]       = useState('')
   const [notes, setNotes]             = useState('')
   const [callbackAt, setCallbackAt]   = useState('')
   const [productId, setProductId]     = useState('')
@@ -87,6 +93,11 @@ export function OrderCreateModal({ onClose, onSuccess, prefillPhone, prefillCust
       firstName,
       lastName,
       phone: normalizePhone(phone),
+      email: email || undefined,
+      deliveryCity: city || undefined,
+      deliveryAddress: address || undefined,
+      deliveryDistrict: district || undefined,
+      deliveryLandmark: landmark || undefined,
       notes: notes || undefined,
       callbackAt: callbackAt || undefined,
     })
@@ -199,6 +210,38 @@ export function OrderCreateModal({ onClose, onSuccess, prefillPhone, prefillCust
                 placeholder={t('order.placeholder_last_name')}
                 className={inputCls}
               />
+            </div>
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('order.email_optional')}</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={t('order.placeholder_email')} dir="ltr" className={inputCls} />
+          </div>
+
+          {/* Livraison */}
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">{t('order.delivery_section')}</p>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('order.delivery_city')}</label>
+              <input type="text" value={city} onChange={e => setCity(e.target.value)} list="staff-cities-list" placeholder={t('order.placeholder_city')} className={inputCls} />
+              <datalist id="staff-cities-list">
+                {MOROCCAN_CITIES.map(c => <option key={c} value={c} />)}
+              </datalist>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('order.delivery_address')}</label>
+              <input type="text" value={address} onChange={e => setAddress(e.target.value)} placeholder={t('order.placeholder_address')} className={inputCls} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('order.delivery_district')}</label>
+                <input type="text" value={district} onChange={e => setDistrict(e.target.value)} placeholder={t('order.placeholder_district')} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('order.delivery_landmark')}</label>
+                <input type="text" value={landmark} onChange={e => setLandmark(e.target.value)} placeholder={t('order.placeholder_landmark')} className={inputCls} />
+              </div>
             </div>
           </div>
 
