@@ -15,6 +15,7 @@ export function normalizePhone(phone: string): string {
 
 interface CreateOrderParams {
   productId: string
+  quantity?: number
   firstName: string
   lastName: string
   phone: string
@@ -52,6 +53,7 @@ export function useCreateOrder() {
       product_id:           product.id,
       product_name:         product.name_fr,
       product_price:        product.price,
+      quantity:             Math.max(1, params.quantity ?? 1),
       customer_first_name:  params.firstName.trim(),
       customer_last_name:   params.lastName.trim(),
       customer_phone:       normalizePhone(params.phone),
@@ -101,6 +103,7 @@ export function useCreateOrder() {
 
 interface CreateOrderAdminParams {
   productId: string
+  quantity?: number
   channel: OrderChannel
   firstName: string
   lastName: string
@@ -135,6 +138,7 @@ export function useCreateOrderAdmin() {
       p_delivery_landmark: params.deliveryLandmark?.trim() || null,
       p_notes:             params.notes?.trim() || null,
       p_callback_at:       params.callbackAt || null,
+      p_quantity:          Math.max(1, params.quantity ?? 1),
     })
 
     if (rpcErr) {

@@ -24,7 +24,9 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(del \"D:\\\\Data\\\\OneDrive - Ceritek\\\\Applications\\\\gitHub\\\\githup-workspace\\\\nova-shop\\\\src\\\\pages\\\\Admin\\\\CRCSettingsPage.tsx\")",
-      "Bash(del \"D:\\\\Data\\\\OneDrive - Ceritek\\\\Applications\\\\gitHub\\\\githup-workspace\\\\nova-shop\\\\src\\\\pages\\\\Admin\\\\EmailSettingsPage.tsx\")"
+      "Bash(del \"D:\\\\Data\\\\OneDrive - Ceritek\\\\Applications\\\\gitHub\\\\githup-workspace\\\\nova-shop\\\\src\\\\pages\\\\Admin\\\\EmailSettingsPage.tsx\")",
+      "Bash(Select-String -Path \"D:\\\\Data\\\\OneDrive - Ceritek\\\\Applications\\\\gitHub\\\\githup-workspace\\\\nova-shop\\\\supabase-workspace.sql\" -Pattern \"create_order_admin\")",
+      "Bash(Select-Object -First 10)"
     ]
   }
 }

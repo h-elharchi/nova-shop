@@ -27,6 +27,7 @@ export function OrderModal({ product, onClose }: Props) {
   const [address, setAddress]     = useState('')
   const [district, setDistrict]   = useState('')
   const [landmark, setLandmark]   = useState('')
+  const [quantity, setQuantity]   = useState(1)
   const [errors, setErrors] = useState<{
     firstName?: string; lastName?: string; phone?: string; city?: string; address?: string
   }>({})
@@ -61,6 +62,7 @@ export function OrderModal({ product, onClose }: Props) {
     if (!validate()) return
     await createOrder({
       productId: product.id,
+      quantity,
       firstName, lastName, phone,
       email: email || undefined,
       deliveryCity: city,
@@ -99,22 +101,49 @@ export function OrderModal({ product, onClose }: Props) {
             </div>
           ) : (
             <>
-              {/* Product summary */}
-              <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
-                {mainImage ? (
-                  <img src={mainImage} alt={name} className="w-16 h-16 rounded-lg object-cover shrink-0" />
-                ) : (
-                  <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center shrink-0">
-                    <ShoppingBag className="w-7 h-7 text-gray-400 dark:text-gray-500" />
+              {/* Product summary + quantity */}
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3 space-y-3">
+                <div className="flex items-center gap-3">
+                  {mainImage ? (
+                    <img src={mainImage} alt={name} className="w-16 h-16 rounded-lg object-cover shrink-0" />
+                  ) : (
+                    <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center shrink-0">
+                      <ShoppingBag className="w-7 h-7 text-gray-400 dark:text-gray-500" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">{t('order.product_ordered')}</p>
+                    <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm leading-tight">{name}</p>
+                    <p className="text-blue-600 dark:text-blue-400 font-bold text-sm mt-0.5">
+                      {product.price.toLocaleString()} {t('common.mad')}
+                    </p>
+                  </div>
+                </div>
+                {/* Quantity selector */}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('order.quantity')}</span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setQuantity(q => Math.max(1, q - 1))}
+                      className="w-9 h-9 rounded-full border border-gray-200 dark:border-gray-600 flex items-center justify-center text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-lg font-bold transition-colors"
+                    >−</button>
+                    <span className="w-8 text-center font-bold text-gray-900 dark:text-white text-base">{quantity}</span>
+                    <button
+                      type="button"
+                      onClick={() => setQuantity(q => Math.min(99, q + 1))}
+                      className="w-9 h-9 rounded-full border border-gray-200 dark:border-gray-600 flex items-center justify-center text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-lg font-bold transition-colors"
+                    >+</button>
+                  </div>
+                </div>
+                {quantity > 1 && (
+                  <div className="flex items-center justify-between pt-1 border-t border-gray-200 dark:border-gray-600">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{t('order.total')}</span>
+                    <span className="font-bold text-blue-600 dark:text-blue-400">
+                      {(product.price * quantity).toLocaleString()} {t('common.mad')}
+                    </span>
                   </div>
                 )}
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">{t('order.product_ordered')}</p>
-                  <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm leading-tight">{name}</p>
-                  <p className="text-blue-600 dark:text-blue-400 font-bold text-sm mt-0.5">
-                    {product.price.toLocaleString()} {t('common.mad')}
-                  </p>
-                </div>
               </div>
 
               {error && (

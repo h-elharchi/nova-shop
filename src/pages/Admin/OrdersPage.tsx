@@ -378,7 +378,12 @@ export function AdminOrdersPage() {
                     <div className="flex items-start justify-between gap-2 flex-wrap">
                       <div>
                         <p className="font-semibold text-gray-900 dark:text-white text-sm">{order.product_name}</p>
-                        <p className="text-blue-600 dark:text-blue-400 font-bold text-sm">{order.product_price.toLocaleString()} MAD</p>
+                        <p className="text-blue-600 dark:text-blue-400 font-bold text-sm">
+                          {(order.quantity ?? 1) > 1
+                            ? <>{order.quantity} × {order.product_price.toLocaleString()} = {(order.product_price * (order.quantity ?? 1)).toLocaleString()} MAD</>
+                            : <>{order.product_price.toLocaleString()} MAD</>
+                          }
+                        </p>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-base" title={order.channel}>{CHANNEL_ICONS[order.channel] ?? '?'}</span>

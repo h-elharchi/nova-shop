@@ -21,6 +21,7 @@ interface Props {
 
 interface EditState {
   status: OrderStatus
+  quantity: number
   notes: string
 }
 
@@ -30,7 +31,7 @@ export function CustomerOrdersPanel({ customerId, prefillCustomer, compact = fal
   const [loading, setLoading]         = useState(true)
   const [showCreate, setShowCreate]   = useState(false)
   const [editingId, setEditingId]     = useState<string | null>(null)
-  const [editState, setEditState]     = useState<EditState>({ status: 'new', notes: '' })
+  const [editState, setEditState]     = useState<EditState>({ status: 'new', quantity: 1, notes: '' })
   const [saving, setSaving]           = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting]       = useState(false)
@@ -50,7 +51,7 @@ export function CustomerOrdersPanel({ customerId, prefillCustomer, compact = fal
 
   function startEdit(o: Order) {
     setEditingId(o.id)
-    setEditState({ status: o.status, notes: o.notes ?? '' })
+    setEditState({ status: o.status, quantity: o.quantity ?? 1, notes: o.notes ?? '' })
     setConfirmDeleteId(null)
   }
 
@@ -60,13 +61,14 @@ export function CustomerOrdersPanel({ customerId, prefillCustomer, compact = fal
 
   async function saveEdit(id: string) {
     setSaving(true)
+    const qty = Math.max(1, editState.quantity)
     const { error } = await supabase
       .from('orders')
-      .update({ status: editState.status, notes: editState.notes || null })
+      .update({ status: editState.status, quantity: qty, notes: editState.notes || null })
       .eq('id', id)
     setSaving(false)
     if (!error) {
-      setOrders(prev => prev.map(o => o.id === id ? { ...o, status: editState.status, notes: editState.notes || null } : o))
+      setOrders(prev => prev.map(o => o.id === id ? { ...o, status: editState.status, quantity: qty, notes: editState.notes || null } : o))
       setEditingId(null)
     }
   }
@@ -121,6 +123,25 @@ export function CustomerOrdersPanel({ customerId, prefillCustomer, compact = fal
                       <option key={st} value={st}>{t(`order.status_${st}`)}</option>
                     ))}
                   </select>
+                  {/* Quantity */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">{t('order.quantity')}</span>
+                    <button type="button" onClick={() => setEditState(s => ({ ...s, quantity: Math.max(1, s.quantity - 1) }))}
+                      className="w-6 h-6 rounded-full border border-gray-200 dark:border-gray-600 flex items-center justify-center text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-xs font-bold">−</button>
+                    <input
+                      type="number" min={1} max={99}
+                      value={editState.quantity}
+                      onChange={e => setEditState(s => ({ ...s, quantity: Math.max(1, Math.min(99, parseInt(e.target.value) || 1)) }))}
+                      className="w-12 text-center border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded px-1 py-0.5 text-xs"
+                    />
+                    <button type="button" onClick={() => setEditState(s => ({ ...s, quantity: Math.min(99, s.quantity + 1) }))}
+                      className="w-6 h-6 rounded-full border border-gray-200 dark:border-gray-600 flex items-center justify-center text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-xs font-bold">+</button>
+                    {editState.quantity > 1 && (
+                      <span className="text-xs font-bold text-blue-600 dark:text-blue-400 ml-auto">
+                        {(o.product_price * editState.quantity).toLocaleString()} MAD
+                      </span>
+                    )}
+                  </div>
                   <textarea
                     value={editState.notes}
                     onChange={e => setEditState(s => ({ ...s, notes: e.target.value }))}
@@ -171,14 +192,13 @@ export function CustomerOrdersPanel({ customerId, prefillCustomer, compact = fal
                     <p className={`font-medium text-gray-800 dark:text-gray-200 truncate ${compact ? 'text-xs' : 'text-sm'}`}>
                       {o.product_name}
                     </p>
-                    {!compact && (
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                        {o.product_price.toLocaleString()} MAD · {new Date(o.created_at).toLocaleDateString('fr-MA')}
-                      </p>
-                    )}
-                    {compact && (
-                      <p className="text-xs text-gray-400">{o.product_price.toLocaleString()} MAD</p>
-                    )}
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                      {(o.quantity ?? 1) > 1
+                        ? <>{o.quantity} × {o.product_price.toLocaleString()} = <span className="font-semibold text-blue-600 dark:text-blue-400">{(o.product_price * (o.quantity ?? 1)).toLocaleString()} MAD</span></>
+                        : <>{o.product_price.toLocaleString()} MAD</>
+                      }
+                      {!compact && ` · ${new Date(o.created_at).toLocaleDateString('fr-MA')}`}
+                    </p>
                   </div>
                   <OrderStatusBadge status={o.status} />
                   <button

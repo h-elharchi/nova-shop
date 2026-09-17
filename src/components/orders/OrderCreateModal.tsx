@@ -46,6 +46,7 @@ export function OrderCreateModal({ onClose, onSuccess, prefillPhone, prefillCust
   const [notes, setNotes]             = useState('')
   const [callbackAt, setCallbackAt]   = useState('')
   const [productId, setProductId]     = useState('')
+  const [quantity, setQuantity]       = useState(1)
   const [products, setProducts]       = useState<Pick<Product, 'id' | 'name_fr' | 'price'>[]>([])
   const [foundCustomer, setFoundCustomer] = useState<CustomerLike | null>(null)
   const [phoneError, setPhoneError]   = useState('')
@@ -89,6 +90,7 @@ export function OrderCreateModal({ onClose, onSuccess, prefillPhone, prefillCust
 
     const result = await createOrder({
       productId,
+      quantity,
       channel,
       firstName,
       lastName,
@@ -245,20 +247,46 @@ export function OrderCreateModal({ onClose, onSuccess, prefillPhone, prefillCust
             </div>
           </div>
 
-          {/* Produit */}
-          <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('order.modal_product')}</label>
-            <select
-              value={productId}
-              onChange={e => setProductId(e.target.value)}
-              className={inputCls}
-              required
-            >
-              <option value="">{t('order.modal_select_product')}</option>
-              {products.map(p => (
-                <option key={p.id} value={p.id}>{p.name_fr} — {p.price.toLocaleString()} MAD</option>
-              ))}
-            </select>
+          {/* Produit + Quantité */}
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('order.modal_product')}</label>
+              <select
+                value={productId}
+                onChange={e => { setProductId(e.target.value); setQuantity(1) }}
+                className={inputCls}
+                required
+              >
+                <option value="">{t('order.modal_select_product')}</option>
+                {products.map(p => (
+                  <option key={p.id} value={p.id}>{p.name_fr} — {p.price.toLocaleString()} MAD</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">{t('order.quantity')}</label>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setQuantity(q => Math.max(1, q - 1))}
+                  className="w-7 h-7 rounded-full border border-gray-200 dark:border-gray-600 flex items-center justify-center text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-bold transition-colors">−</button>
+                <input
+                  type="number"
+                  min={1} max={99}
+                  value={quantity}
+                  onChange={e => setQuantity(Math.max(1, Math.min(99, parseInt(e.target.value) || 1)))}
+                  className="w-14 text-center border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button type="button" onClick={() => setQuantity(q => Math.min(99, q + 1))}
+                  className="w-7 h-7 rounded-full border border-gray-200 dark:border-gray-600 flex items-center justify-center text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-bold transition-colors">+</button>
+              </div>
+              {productId && quantity > 1 && (() => {
+                const p = products.find(p => p.id === productId)
+                return p ? (
+                  <span className="text-sm font-bold text-blue-600 dark:text-blue-400 ml-auto">
+                    {t('order.total')} : {(p.price * quantity).toLocaleString()} MAD
+                  </span>
+                ) : null
+              })()}
+            </div>
           </div>
 
           {/* Notes */}

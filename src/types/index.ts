@@ -116,6 +116,7 @@ export interface Order {
   product_id: string
   product_name: string
   product_price: number
+  quantity: number
   customer_first_name: string
   customer_last_name: string
   customer_phone: string
