@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   MessageSquare, Mail, Phone, Clock, Check, X, Zap, ArrowLeftRight,
-  ChevronRight, User, Inbox, AlertCircle, Copy, ExternalLink, RefreshCw, ShoppingBag,
+  ChevronRight, User, Inbox, AlertCircle, Copy, ExternalLink, RefreshCw, ShoppingBag, Plus,
 } from 'lucide-react'
 import { AdminLayout } from './AdminLayout'
 import { useI18n } from '../../context/LanguageContext'
@@ -15,6 +15,7 @@ import { useNotifications } from '../../hooks/useNotifications'
 import { ChatMessage } from '../../components/chat/ChatMessage'
 import { AdminChatInput } from '../../components/chat/admin/AdminChatInput'
 import { CustomerOrdersPanel } from '../../components/orders/CustomerOrdersPanel'
+import { OrderCreateModal } from '../../components/orders/OrderCreateModal'
 import { PauseModal } from '../../components/chat/admin/PauseModal'
 import { supabase } from '../../lib/supabase'
 import { loadDispositionCodes } from '../../lib/chat'
@@ -604,6 +605,7 @@ function Customer360({ interaction }: { interaction: InteractionWithDetails }) {
   const { t } = useI18n()
   const [tab, setTab] = useState<'orders' | 'interactions'>('orders')
   const [interactions, setInteractions] = useState<{ id: string; channel: string; status: string; created_at: string }[]>([])
+  const [showCreateOrder, setShowCreateOrder] = useState(false)
 
   useEffect(() => {
     if (!interaction.customer_id) return
@@ -675,7 +677,29 @@ function Customer360({ interaction }: { interaction: InteractionWithDetails }) {
         />
       )}
       {tab === 'orders' && !interaction.customer_id && (
-        <p className="text-xs text-gray-400">{t('order.no_orders')}</p>
+        <div className="space-y-2">
+          <div className="flex justify-end">
+            <button
+              onClick={() => setShowCreateOrder(true)}
+              className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              <Plus className="w-3 h-3" />{t('customers.add_order')}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-3">{t('order.no_orders')}</p>
+        </div>
+      )}
+
+      {showCreateOrder && (
+        <OrderCreateModal
+          onClose={() => setShowCreateOrder(false)}
+          defaultChannel={interaction.channel === 'email' ? 'email' : interaction.channel === 'callback' ? 'phone' : 'phone'}
+          prefillCustomer={{
+            first_name: interaction.customer_first_name ?? '',
+            last_name:  interaction.customer_last_name  ?? '',
+            phone:      interaction.customer_phone       ?? '',
+          }}
+        />
       )}
 
       {/* Interactions tab */}
