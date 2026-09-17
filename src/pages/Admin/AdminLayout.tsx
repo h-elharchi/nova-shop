@@ -215,7 +215,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     <div className="min-h-screen bg-gray-50 dark:bg-dark-bg flex transition-colors duration-200">
       {/* Sidebar desktop */}
       <aside className={`hidden md:flex flex-col ${sidebarWidth} bg-white dark:bg-dark-surface border-r border-gray-100 dark:border-dark-border fixed inset-y-0 transition-all duration-200`}>
-        <SidebarContent />
+        {SidebarContent({})}
       </aside>
 
       {/* Sidebar mobile overlay */}
@@ -223,7 +223,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
           <div className="relative w-64 h-full bg-white dark:bg-dark-surface shadow-xl transition-colors duration-200">
-            <SidebarContent mobile />
+            {SidebarContent({ mobile: true })}
           </div>
         </div>
       )}
