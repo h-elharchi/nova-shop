@@ -40,7 +40,7 @@ export function CustomerOrdersPanel({ customerId, prefillCustomer, compact = fal
     setLoading(true)
     const { data } = await supabase
       .from('orders')
-      .select('id, product_name, product_price, status, notes, channel, created_at, customer_id')
+      .select('id, product_name, product_price, quantity, status, notes, channel, created_at, customer_id')
       .eq('customer_id', customerId)
       .order('created_at', { ascending: false })
     setOrders((data ?? []) as Order[])
