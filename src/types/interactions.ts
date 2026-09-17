@@ -23,6 +23,7 @@ export interface Interaction {
   channel: InteractionChannel
   origin_channel: string | null
   customer_id: string | null
+  email_thread_id: string | null
   subject: string | null
   priority: number
   status: InteractionStatus
@@ -198,8 +199,7 @@ export interface WorkspaceInteraction extends InteractionWithDetails {
   // Chat-specific
   chat_conversation_id?: string | null
   chat_conversation_status?: string | null
-  // Email-specific
-  email_thread_id?: string | null
+  // Email-specific (email_thread_id already in Interaction base)
   email_thread_from?: string | null
   latest_message_preview?: string | null
   unread_count?: number
