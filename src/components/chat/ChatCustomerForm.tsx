@@ -12,12 +12,13 @@ export function ChatCustomerForm({ onSubmit, loading = false }: ChatCustomerForm
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Partial<CustomerFormData & { submit: string }>>({})
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setFieldErrors({})
-    const errorKey = await onSubmit({ firstName, lastName, phone })
+    const errorKey = await onSubmit({ firstName, lastName, phone, email: email.trim() || undefined })
     if (errorKey) {
       if (errorKey === 'chat.error_name') setFieldErrors({ firstName: t(errorKey) })
       else if (errorKey === 'chat.error_lastname') setFieldErrors({ lastName: t(errorKey) })
@@ -94,6 +95,20 @@ export function ChatCustomerForm({ onSubmit, loading = false }: ChatCustomerForm
           {fieldErrors.phone && (
             <p className="mt-1 text-xs text-red-500">{fieldErrors.phone}</p>
           )}
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+            {t('callback.form_email')}
+          </label>
+          <input
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="email@example.com"
+            disabled={loading}
+            className={inputClass(false)}
+          />
         </div>
 
         {fieldErrors.submit && (

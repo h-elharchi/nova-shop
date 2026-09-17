@@ -92,6 +92,9 @@ export interface Customer {
   updated_at: string
 }
 
+// Re-export des types étendus depuis interactions.ts pour backward compat
+export type { CustomerV2, CustomerView, CustomerAddress, CustomerStatus } from './interactions'
+
 // ─── Commandes ────────────────────────────────────────────────
 
 export type OrderStatus =

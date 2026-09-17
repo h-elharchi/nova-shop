@@ -56,10 +56,10 @@ export function useSupervision(opts: UseSupervisionOptions = {}): UseSupervision
       .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_agents' }, () => {
         fetchAll()
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_conversations' }, () => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'interactions' }, () => {
         fetchAll()
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_conversations' }, () => {
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'interactions' }, () => {
         fetchAll()
       })
       .subscribe()

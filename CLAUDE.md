@@ -12,7 +12,7 @@ Les clients commandent via WhatsApp ou via un formulaire en ligne. L'admin et le
 
 **URL de production :** `https://<USERNAME>.github.io/nova-shop/`
 
-**État du projet : Lots 1–6 livrés (Lot 5 = Base clients + Commandes multi-canal, Lot 6 = Canal email Gmail). Déploiement en attente de push.**
+**État du projet : Lots 1–6 + Lots 7–11 livrés (Lot 7–11 = Workspace Agent multicanal, interactions unifiées, contacts enrichis, historique unifié, supervision par canal). Build propre. Déploiement en attente de push.**
 
 ---
 
@@ -25,10 +25,14 @@ Les clients commandent via WhatsApp ou via un formulaire en ligne. L'admin et le
 - Prise de commande sans système de paiement en ligne (paiement à la livraison)
 - Chat en temps réel client ↔ agent CRC avec file d'attente, présence agent, wrap-up, transfert
 - Supervision temps réel des agents et KPIs (taux de prise, DMA, DMT, niveau de service)
-- Historique paginé des conversations avec export Excel
-- Base clients centralisée (déduplication par téléphone, notes internes, historique 360°)
+- Historique paginé des interactions (chat + email + callback) avec filtres canal/statut et export Excel
+- Base clients centralisée (déduplication par téléphone, archive/restauration/anonymisation, adresses, audit, notes internes, historique 360°)
 - Commandes multi-canal (site / whatsapp / email / chat / phone), 12 statuts, saisie admin
 - Canal email Gmail : boîte de réception, threads, réponse, archivage, connexion OAuth2 via Edge Functions
+- **Workspace Agent multicanal** (`/admin/workspace`) : chat + email + rappel dans une interface unifiée, distribution par `route_interactions()`, file d'attente par canal, wrap-up unifié, transfert
+- Table `interactions` pivotante (chat, email, callback) avec machine d'états (queued → offered → assigned → active → wrap_up → closed)
+- Supervision temps réel avec répartition par canal (chat / email / callback), KPIs live
+- Formulaire de rappel client (CallbackForm) sur la page Contact et la page d'accueil
 
 ---
 
@@ -99,6 +103,8 @@ HashRouter
 | 8 | `supabase-orders-v2.sql` | **Lot 5.** Ajoute customer_id, channel (5 valeurs), assigned_agent_id, notes, callback_at à orders. Migration statuts (completed→delivered, 12 statuts). RPC create_order_admin (SECURITY DEFINER). |
 | 8b | `migrate-customers.sql` | **Lot 5 — migration une seule fois.** Peuple customers depuis orders existantes, met à jour orders.customer_id. |
 | 9 | `supabase-email.sql` | **Lot 6.** Vault helpers (store/read/update_vault_secret, GRANT service_role uniquement). Tables : email_accounts, email_messages, email_sync_log. RLS. Realtime. Vue email_messages_view. Fonction match_customer_by_email_address. |
+| 10 | `supabase-workspace.sql` | **Lots 7–11.** Tables : interactions, email_threads, callback_requests, callback_attempts, customer_addresses, customer_audit_log. Étend customers (status, version, customer_number, city, notes_internal). RPCs : route_interactions, accept_interaction_offer, reject_interaction_offer, take_next_interaction, activate_interaction, start_wrap_up, close_interaction, transfer_interaction, create_callback_request, record_callback_attempt, archive_customer, restore_customer, delete_customer, get_customer_audit. Vue customers_view. |
+| 11 | `migrate-interactions.sql` | **Lots 7–11 — migration une seule fois.** Migre chat_conversations → interactions, crée email_threads depuis email_messages. |
 
 **⚠ Après modification d'une fonction SQL (signature ou type de retour), faire `DROP FUNCTION IF EXISTS ...` avant `CREATE OR REPLACE`.**
 
@@ -130,6 +136,8 @@ nova-shop/
 ├── supabase-orders-v2.sql            # Lot 5 : migration statuts + canal + RPC create_order_admin
 ├── migrate-customers.sql             # Lot 5 : script migration une seule fois (peuple customers)
 ├── supabase-email.sql                # Lot 6 : email_accounts, email_messages, Vault helpers
+├── supabase-workspace.sql            # Lots 7–11 : interactions, email_threads, callback_requests, customers_v2, RPCs
+├── migrate-interactions.sql          # Lots 7–11 : migration une seule fois (chat_conversations → interactions)
 │
 └── src/
     ├── main.tsx
@@ -137,8 +145,9 @@ nova-shop/
     ├── index.css                     # Tailwind + RTL font + dark mode
     │
     ├── types/
-    │   ├── index.ts                  # Types e-commerce (Product, Category, Order, Profile…)
-    │   └── chat.ts                   # Types chat + CRC + supervision (voir section 9)
+    │   ├── index.ts                  # Types e-commerce (Product, Category, Order, Profile…) + re-exports CustomerV2
+    │   ├── chat.ts                   # Types chat + CRC + supervision (voir section 9)
+    │   └── interactions.ts           # Lots 7–11 : Interaction, InteractionWithDetails, EmailThread, CallbackRequest, CustomerV2, CustomerView, CustomerAddress, WorkspaceInteraction, UnifiedWrapUpData…
     │
     ├── i18n/translations.ts          # Traductions FR + AR — toutes les sections
     │
@@ -161,9 +170,13 @@ nova-shop/
     │   ├── useChatPresence.ts        # Présence agent + liste conversations (Realtime)
     │   ├── useNotifications.ts       # Son (Web Audio API) + Notification API navigateur
     │   ├── useQuickReplies.ts        # Chargement réponses rapides CRC
-    │   ├── useSupervision.ts         # Agents dashboard + KPIs + Realtime agents/conversations
-    │   ├── useConversationHistory.ts # Historique paginé avec gestion des filtres
-    │   ├── useCustomers.ts           # Lot 5 : liste clients, search, updateNotes, upsertCustomer, findByPhone
+    │   ├── useSupervision.ts         # Agents dashboard + KPIs + Realtime agents/interactions
+    │   ├── useConversationHistory.ts # Historique paginé (ancien, conservé pour compatibilité)
+    │   ├── useInteractionHistory.ts  # Lots 7–11 : historique unifié interactions (chat+email+callback) avec filtres canal/statut
+    │   ├── useInteractions.ts        # Lots 7–11 : liste interactions avec filtres, pagination, Realtime
+    │   ├── useCallbacks.ts           # Lots 7–11 : callback_requests + attempts, recordAttempt
+    │   ├── useWorkspace.ts           # Lots 7–11 : état workspace (activeInteraction, offeredInteraction, queueCounts, actions)
+    │   ├── useCustomers.ts           # Lots 5+7–11 : CustomerView, archive/restore/delete, addresses, audit, findByPhone
     │   ├── useEmailAccounts.ts       # Lot 6 : comptes Gmail, connectGmail (OAuth redirect), syncNow
     │   └── useEmailMessages.ts       # Lot 6 : messages + Realtime INSERT/UPDATE, mark statuts
     │
@@ -172,6 +185,7 @@ nova-shop/
     │   ├── whatsapp.ts               # WHATSAPP_NUMBER hardcodé + utilitaires
     │   ├── exportExcel.ts            # exportOrdersToExcel + exportConversationsToExcel
     │   ├── chat.ts                   # ensureAnonAuth, createConversation, sendMessage, RPCs CRC
+    │   ├── contact.ts                # CONTACT_EMAIL = 'hel.nova.shop@gmail.com'
     │   ├── supervision.ts            # loadAgentsDashboard, loadSupervisionKpis, loadConversationHistory
     │   └── email.ts                  # Lot 6 : loadEmailAccounts, loadEmailMessages, getGmailAuthUrl, triggerEmailSync, sendEmail
     │
@@ -224,15 +238,16 @@ nova-shop/
             ├── ProductFormPage.tsx
             ├── CategoriesPage.tsx
             ├── OrdersPage.tsx
-            ├── ChatPage.tsx              # Interface agent CRC complète
+            ├── ChatPage.tsx              # Interface agent CRC (ancienne, conservée)
             ├── CRCSettingsPage.tsx       # Paramètres CRC (admin)
-            ├── SupervisionPage.tsx       # KPIs temps réel (admin)
-            ├── HistoryPage.tsx           # Historique paginé (agent + admin)
+            ├── SupervisionPage.tsx       # KPIs temps réel + répartition par canal (admin)
+            ├── HistoryPage.tsx           # Historique unifié chat+email+callback (agent + admin)
             ├── AccountPage.tsx           # Mon compte (profil, avatar, mot de passe)
             ├── UsersPage.tsx             # Gestion utilisateurs (admin)
-            ├── CustomersPage.tsx         # Lot 5 : liste clients + modal détail + notes + commandes
-            ├── EmailPage.tsx             # Lot 6 : inbox Gmail + panel thread + réponse + archivage
-            └── EmailSettingsPage.tsx     # Lot 6 : connexion OAuth Gmail + liste comptes + sync
+            ├── CustomersPage.tsx         # Lots 5+7–11 : liste clients + archive/restore/delete + adresses + audit
+            ├── EmailPage.tsx             # Lot 6 : inbox Gmail (conservée, accessible depuis workspace)
+            ├── EmailSettingsPage.tsx     # Lot 6 : connexion OAuth Gmail + liste comptes + sync
+            └── WorkspacePage.tsx         # Lots 7–11 : workspace agent multicanal (chat+email+callback)
 ```
 
 ---
@@ -252,7 +267,8 @@ nova-shop/
 | `/set-password` | SetPasswordPage | Public (flux invitation) |
 | `/admin/login` | AdminLoginPage | Public |
 | `/admin` | AdminDashboard | agent |
-| `/admin/chat` | AdminChatPage | agent |
+| `/admin/chat` | Redirect `/admin/workspace` | — |
+| `/admin/workspace` | WorkspacePage | agent |
 | `/admin/orders` | AdminOrdersPage | agent |
 | `/admin/history` | HistoryPage | agent |
 | `/admin/account` | AdminAccountPage | agent |
@@ -264,7 +280,7 @@ nova-shop/
 | `/admin/supervision` | SupervisionPage | admin |
 | `/admin/crc-settings` | CRCSettingsPage | admin |
 | `/admin/customers` | CustomersPage | agent |
-| `/admin/email` | EmailPage | agent |
+| `/admin/email` | Redirect `/admin/workspace` | — |
 | `/admin/email-settings` | EmailSettingsPage | admin |
 | `*` | Redirect `/` | — |
 
@@ -510,6 +526,12 @@ is_staff()   → profiles.role IN ('admin', 'agent')   -- défini dans supabase-
 | `email_accounts` | — | SELECT | FULL |
 | `email_messages` | — | FULL | FULL |
 | `email_sync_log` | — | SELECT | SELECT |
+| `interactions` | — | SELECT assigned_agent_id=uid() + FULL | FULL |
+| `email_threads` | — | FULL | FULL |
+| `callback_requests` | INSERT (anon) | FULL | FULL |
+| `callback_attempts` | — | FULL | FULL |
+| `customer_addresses` | — | FULL | FULL |
+| `customer_audit_log` | — | SELECT | SELECT |
 
 ### Règles immuables (ne jamais violer)
 
@@ -807,9 +829,17 @@ npm run lint      # ESLint flat config v9
 
 7. **GRANTs fonctions CRC** : `supabase-crc.sql` drop/recrée des fonctions sans re-déclarer les GRANTs explicitement. Si erreur "permission denied" sur les RPCs CRC, exécuter les GRANTs manuellement (voir section 5, note après le tableau).
 
-8. **Bundle size** : ~987 kB minifié (après Lots 5-6). Pas de code-splitting configuré. Warning Vite normal, ne pas s'en préoccuper sauf si besoin de perf.
+8. **Bundle size** : ~1 170 kB minifié (après Lots 7–11). Pas de code-splitting configuré. Warning Vite normal, ne pas s'en préoccuper sauf si besoin de perf.
 
 9. **Historique dans ChatPage supprimé** : l'onglet "Historique" qui était dans ChatPage a été remplacé par la page `/admin/history`. Ne pas tenter de le réintroduire dans ChatPage.
+
+14. **Table `interactions` requise** : `supabase-workspace.sql` doit être exécuté avant que le Workspace (`/admin/workspace`) et `HistoryPage` ne fonctionnent. Sans cette table, les pages afficheront des erreurs Supabase silencieuses (tableau vide).
+
+15. **`route_interactions()` + pg_cron** : la distribution automatique nécessite l'extension `pg_cron` activée dans Supabase (Dashboard → Extensions → pg_cron) et l'exécution du cron job défini dans `supabase-workspace.sql`. Sans cela, les interactions restent en statut `queued` indéfiniment.
+
+16. **`useConversationHistory` conservé** mais non utilisé dans les pages après Lot 11 (HistoryPage utilise maintenant `useInteractionHistory`). Il peut être supprimé si le code legacy `get_conversation_history` n'est plus nécessaire.
+
+17. **InlineTransferModal dans WorkspacePage** : le composant de transfert est inline dans `WorkspacePage.tsx` (pas un fichier séparé) et affiche les agents par `user_id` tronqué. En production, relier les agents à `profiles` pour afficher les noms.
 
 10. **Canal email — activation OAuth nécessaire** : la page `/admin/email-settings` ne peut fonctionner qu'après déploiement des Edge Functions gmail-* et configuration des secrets (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SITE_URL`) dans Supabase Dashboard.
 

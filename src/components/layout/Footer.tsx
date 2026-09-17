@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
-import { ShoppingBag, MapPin, Clock } from 'lucide-react'
+import { ShoppingBag, MapPin, Clock, Mail } from 'lucide-react'
 import { useI18n } from '../../context/LanguageContext'
 import { WhatsAppButton } from '../whatsapp/WhatsAppButton'
+import { CONTACT_EMAIL } from '../../lib/contact'
 
 export function Footer() {
   const { t } = useI18n()
@@ -40,6 +41,12 @@ export function Footer() {
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-blue-400 shrink-0" />
                 <span>{t('contact.hours')}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Mail className="w-4 h-4 text-blue-400 shrink-0" />
+                <a href={`mailto:${CONTACT_EMAIL}`} className="hover:text-white transition-colors">
+                  {CONTACT_EMAIL}
+                </a>
               </div>
               <div className="mt-4">
                 <WhatsAppButton size="sm" />

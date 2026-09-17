@@ -21,10 +21,10 @@ export function SetPasswordPage() {
     // index.html captures Supabase auth hash fragments into sessionStorage before
     // HashRouter can clear them. We read them here and call setSession manually.
     let storedAuth: string | null = null
-    try { storedAuth = sessionStorage.getItem('_nova_auth') } catch {}
+    try { storedAuth = sessionStorage.getItem('_nova_auth') } catch { /* ignore */ }
 
     if (storedAuth) {
-      try { sessionStorage.removeItem('_nova_auth') } catch {}
+      try { sessionStorage.removeItem('_nova_auth') } catch { /* ignore */ }
       const params = new URLSearchParams(storedAuth)
       const accessToken  = params.get('access_token')
       const refreshToken = params.get('refresh_token')

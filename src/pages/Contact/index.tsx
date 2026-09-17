@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import { MessageCircle, Clock, MapPin, MessageSquare } from 'lucide-react'
+import { MessageCircle, Clock, MapPin, MessageSquare, Mail, Phone } from 'lucide-react'
 import { useI18n } from '../../context/LanguageContext'
 import { WhatsAppButton } from '../../components/whatsapp/WhatsAppButton'
 import { Layout } from '../../components/layout/Layout'
 import { ChatWidget } from '../../components/chat/ChatWidget'
+import { CallbackForm } from '../../components/callback/CallbackForm'
 import { useChat } from '../../hooks/useChat'
+import { CONTACT_EMAIL } from '../../lib/contact'
 
 export function ContactPage() {
   const { t, lang } = useI18n()
@@ -70,6 +72,20 @@ export function ContactPage() {
             </div>
           </div>
 
+          {/* Email */}
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center shrink-0">
+              <Mail className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div>
+              <div className="font-semibold text-gray-900 dark:text-white">Email</div>
+              <a href={`mailto:${CONTACT_EMAIL}`}
+                className="text-purple-600 dark:text-purple-400 text-sm hover:underline">
+                {CONTACT_EMAIL}
+              </a>
+            </div>
+          </div>
+
           {/* Livraison */}
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center shrink-0">
@@ -86,6 +102,22 @@ export function ContactPage() {
           <div className="pt-4 border-t border-gray-100 dark:border-dark-border">
             <WhatsAppButton size="lg" fullWidth />
           </div>
+        </div>
+
+        {/* Callback form */}
+        <div className="mt-8 bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/30 rounded-xl flex items-center justify-center">
+              <Phone className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div>
+              <h2 className="font-bold text-gray-900 dark:text-white">{t('callback.form_title')}</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {lang === 'ar' ? 'اتركوا معلوماتكم وسنتصل بكم في أقرب وقت' : 'Laissez vos coordonnées, nous vous rappelons.'}
+              </p>
+            </div>
+          </div>
+          <CallbackForm />
         </div>
       </div>
 

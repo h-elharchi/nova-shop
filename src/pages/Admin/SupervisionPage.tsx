@@ -1,10 +1,17 @@
-import { useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { RefreshCw, MessageSquare, Mail, Phone } from 'lucide-react'
 import { AdminLayout } from './AdminLayout'
 import { useSupervision } from '../../hooks/useSupervision'
 import { useI18n } from '../../context/LanguageContext'
+import { supabase } from '../../lib/supabase'
 import type { SupervisionPeriod } from '../../lib/supervision'
 import type { AgentDashboardEntry, ChatAgentStatus } from '../../types/chat'
+
+interface ChannelCounts {
+  chat_queued: number; chat_active: number
+  email_queued: number; email_active: number
+  callback_queued: number; callback_active: number
+}
 
 function fmtSeconds(s: number | null): string {
   if (s == null) return '—'
@@ -76,6 +83,9 @@ export function SupervisionPage() {
   const [appliedParams, setAppliedParams] = useState<{
     period: SupervisionPeriod; dateFrom: string; dateTo: string; agentId: string
   }>({ period: 'today', dateFrom: '', dateTo: '', agentId: '' })
+  const [channelCounts, setChannelCounts] = useState<ChannelCounts>({
+    chat_queued: 0, chat_active: 0, email_queued: 0, email_active: 0, callback_queued: 0, callback_active: 0,
+  })
 
   const { agents, kpis, loading, error, refresh } = useSupervision({
     period:   appliedParams.period,
@@ -83,6 +93,27 @@ export function SupervisionPage() {
     dateTo:   appliedParams.dateTo   || null,
     agentId:  appliedParams.agentId  || null,
   })
+
+  useEffect(() => {
+    async function loadCounts() {
+      const { data } = await supabase
+        .from('interactions')
+        .select('channel, status')
+        .in('status', ['queued', 'offered', 'assigned', 'active', 'wrap_up'])
+      if (!data) return
+      const counts: ChannelCounts = {
+        chat_queued: 0, chat_active: 0, email_queued: 0, email_active: 0, callback_queued: 0, callback_active: 0,
+      }
+      ;(data as { channel: string; status: string }[]).forEach(r => {
+        const isQueued = r.status === 'queued' || r.status === 'offered'
+        if (r.channel === 'chat')     { if (isQueued) counts.chat_queued++;     else counts.chat_active++ }
+        if (r.channel === 'email')    { if (isQueued) counts.email_queued++;    else counts.email_active++ }
+        if (r.channel === 'callback') { if (isQueued) counts.callback_queued++; else counts.callback_active++ }
+      })
+      setChannelCounts(counts)
+    }
+    loadCounts()
+  }, [agents]) // refresh when agents dashboard refreshes
 
   function apply() {
     setAppliedParams({ period, dateFrom, dateTo, agentId })
@@ -233,6 +264,32 @@ export function SupervisionPage() {
             </div>
           </div>
         )}
+
+        {/* Per-channel live counts */}
+        <div className="grid grid-cols-3 gap-4">
+          {([
+            { ch: 'chat',     icon: <MessageSquare className="w-5 h-5 text-blue-500" />,   label: t('interactions.channel_chat'),     queued: channelCounts.chat_queued,     active: channelCounts.chat_active     },
+            { ch: 'email',    icon: <Mail          className="w-5 h-5 text-purple-500" />,  label: t('interactions.channel_email'),    queued: channelCounts.email_queued,    active: channelCounts.email_active    },
+            { ch: 'callback', icon: <Phone         className="w-5 h-5 text-orange-500" />,  label: t('interactions.channel_callback'), queued: channelCounts.callback_queued, active: channelCounts.callback_active },
+          ] as const).map(c => (
+            <div key={c.ch} className="bg-white dark:bg-dark-card rounded-2xl border border-gray-100 dark:border-dark-border p-4">
+              <div className="flex items-center gap-2 mb-3">
+                {c.icon}
+                <span className="text-sm font-semibold text-gray-900 dark:text-white">{c.label}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <div>
+                  <p className="text-lg font-bold text-gray-900 dark:text-white">{c.queued}</p>
+                  <p>{t('interactions.status_queued')}</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-gray-900 dark:text-white">{c.active}</p>
+                  <p>{t('interactions.status_active')}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
 
         {/* Agents + Dispositions */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

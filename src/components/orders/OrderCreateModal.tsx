@@ -4,7 +4,9 @@ import { useI18n } from '../../context/LanguageContext'
 import { useCreateOrderAdmin, validateMoroccanPhone, normalizePhone } from '../../hooks/useOrders'
 import { useCustomers } from '../../hooks/useCustomers'
 import { supabase } from '../../lib/supabase'
-import type { Product, OrderChannel, Customer } from '../../types'
+import type { Product, OrderChannel } from '../../types'
+
+type CustomerLike = { id: string; first_name: string; last_name: string; phone: string; email?: string | null }
 
 const CHANNELS: OrderChannel[] = ['site', 'whatsapp', 'email', 'chat', 'phone']
 
@@ -20,7 +22,7 @@ interface Props {
   onClose: () => void
   onSuccess?: () => void
   prefillPhone?: string
-  prefillCustomer?: Pick<Customer, 'first_name' | 'last_name' | 'phone'>
+  prefillCustomer?: Pick<CustomerLike, 'first_name' | 'last_name' | 'phone'>
   defaultChannel?: OrderChannel
 }
 
@@ -39,7 +41,7 @@ export function OrderCreateModal({ onClose, onSuccess, prefillPhone, prefillCust
   const [callbackAt, setCallbackAt]   = useState('')
   const [productId, setProductId]     = useState('')
   const [products, setProducts]       = useState<Pick<Product, 'id' | 'name_fr' | 'price'>[]>([])
-  const [foundCustomer, setFoundCustomer] = useState<Customer | null>(null)
+  const [foundCustomer, setFoundCustomer] = useState<CustomerLike | null>(null)
   const [phoneError, setPhoneError]   = useState('')
   const [success, setSuccess]         = useState(false)
 

@@ -17,15 +17,14 @@ import { AdminProductsPage } from './pages/Admin/ProductsPage'
 import { ProductFormPage } from './pages/Admin/ProductFormPage'
 import { AdminCategoriesPage } from './pages/Admin/CategoriesPage'
 import { AdminOrdersPage } from './pages/Admin/OrdersPage'
-import { AdminChatPage } from './pages/Admin/ChatPage'
 import { AdminAccountPage } from './pages/Admin/AccountPage'
 import { AdminUsersPage } from './pages/Admin/UsersPage'
 import { CRCSettingsPage } from './pages/Admin/CRCSettingsPage'
 import { SupervisionPage } from './pages/Admin/SupervisionPage'
 import { HistoryPage } from './pages/Admin/HistoryPage'
 import { CustomersPage } from './pages/Admin/CustomersPage'
-import { EmailPage } from './pages/Admin/EmailPage'
 import { EmailSettingsPage } from './pages/Admin/EmailSettingsPage'
+import { WorkspacePage } from './pages/Admin/WorkspacePage'
 import { SetPasswordPage } from './pages/SetPasswordPage'
 import { ProtectedRoute } from './pages/Admin/ProtectedRoute'
 
@@ -65,23 +64,25 @@ function AppContent() {
 
           {/* Admin — routes protégées (agent + admin) */}
           <Route path="/admin" element={<ProtectedRoute requiredRole="agent"><AdminDashboard /></ProtectedRoute>} />
-          <Route path="/admin/chat" element={<ProtectedRoute requiredRole="agent"><AdminChatPage /></ProtectedRoute>} />
-          <Route path="/admin/orders" element={<ProtectedRoute requiredRole="agent"><AdminOrdersPage /></ProtectedRoute>} />
-          <Route path="/admin/account" element={<ProtectedRoute requiredRole="agent"><AdminAccountPage /></ProtectedRoute>} />
+          <Route path="/admin/workspace"    element={<ProtectedRoute requiredRole="agent"><WorkspacePage /></ProtectedRoute>} />
+          {/* Redirections : anciennes routes → workspace */}
+          <Route path="/admin/chat"         element={<Navigate to="/admin/workspace" replace />} />
+          <Route path="/admin/email"        element={<Navigate to="/admin/workspace" replace />} />
+          <Route path="/admin/orders"       element={<ProtectedRoute requiredRole="agent"><AdminOrdersPage /></ProtectedRoute>} />
+          <Route path="/admin/account"      element={<ProtectedRoute requiredRole="agent"><AdminAccountPage /></ProtectedRoute>} />
 
           {/* Admin — routes protégées (admin uniquement) */}
-          <Route path="/admin/products" element={<ProtectedRoute requiredRole="admin"><AdminProductsPage /></ProtectedRoute>} />
-          <Route path="/admin/products/new" element={<ProtectedRoute requiredRole="admin"><ProductFormPage /></ProtectedRoute>} />
+          <Route path="/admin/products"          element={<ProtectedRoute requiredRole="admin"><AdminProductsPage /></ProtectedRoute>} />
+          <Route path="/admin/products/new"      element={<ProtectedRoute requiredRole="admin"><ProductFormPage /></ProtectedRoute>} />
           <Route path="/admin/products/:id/edit" element={<ProtectedRoute requiredRole="admin"><ProductFormPage /></ProtectedRoute>} />
-          <Route path="/admin/categories" element={<ProtectedRoute requiredRole="admin"><AdminCategoriesPage /></ProtectedRoute>} />
-          <Route path="/admin/users"        element={<ProtectedRoute requiredRole="admin"><AdminUsersPage /></ProtectedRoute>} />
-          <Route path="/admin/supervision"  element={<ProtectedRoute requiredRole="admin"><SupervisionPage /></ProtectedRoute>} />
-          <Route path="/admin/crc-settings" element={<ProtectedRoute requiredRole="admin"><CRCSettingsPage /></ProtectedRoute>} />
+          <Route path="/admin/categories"        element={<ProtectedRoute requiredRole="admin"><AdminCategoriesPage /></ProtectedRoute>} />
+          <Route path="/admin/users"             element={<ProtectedRoute requiredRole="admin"><AdminUsersPage /></ProtectedRoute>} />
+          <Route path="/admin/supervision"       element={<ProtectedRoute requiredRole="admin"><SupervisionPage /></ProtectedRoute>} />
+          <Route path="/admin/crc-settings"      element={<ProtectedRoute requiredRole="admin"><CRCSettingsPage /></ProtectedRoute>} />
 
           {/* Admin — routes protégées (agent + admin) */}
-          <Route path="/admin/history"       element={<ProtectedRoute requiredRole="agent"><HistoryPage /></ProtectedRoute>} />
-          <Route path="/admin/customers"     element={<ProtectedRoute requiredRole="agent"><CustomersPage /></ProtectedRoute>} />
-          <Route path="/admin/email"         element={<ProtectedRoute requiredRole="agent"><EmailPage /></ProtectedRoute>} />
+          <Route path="/admin/history"        element={<ProtectedRoute requiredRole="agent"><HistoryPage /></ProtectedRoute>} />
+          <Route path="/admin/customers"      element={<ProtectedRoute requiredRole="agent"><CustomersPage /></ProtectedRoute>} />
           <Route path="/admin/email-settings" element={<ProtectedRoute requiredRole="admin"><EmailSettingsPage /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
