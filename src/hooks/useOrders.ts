@@ -36,58 +36,37 @@ export function useCreateOrder() {
     setError(null)
     setSuccess(false)
 
-    const { data: product, error: productErr } = await supabase
-      .from('products')
-      .select('id, name_fr, price, is_active')
-      .eq('id', params.productId)
-      .eq('is_active', true)
-      .single()
+    // Flux atomique : commande + client + interaction callback en une seule RPC.
+    // customer_id est défini dès la création → l'agent voit la commande immédiatement.
+    const { data, error: rpcErr } = await supabase.rpc('create_order_site', {
+      p_product_id:        params.productId,
+      p_quantity:          Math.max(1, params.quantity ?? 1),
+      p_first_name:        params.firstName.trim(),
+      p_last_name:         params.lastName.trim(),
+      p_phone:             normalizePhone(params.phone),
+      p_email:             params.email?.trim() || null,
+      p_delivery_city:     params.deliveryCity?.trim() || null,
+      p_delivery_address:  params.deliveryAddress?.trim() || null,
+      p_delivery_district: params.deliveryDistrict?.trim() || null,
+      p_delivery_landmark: params.deliveryLandmark?.trim() || null,
+    })
 
-    if (productErr || !product) {
+    if (rpcErr) {
+      setError(
+        rpcErr.message.includes('product_not_found')
+          ? 'Produit introuvable ou inactif.'
+          : rpcErr.message
+      )
+      setLoading(false)
+      return false
+    }
+
+    const result = data as { order_id: string | null } | null
+    if (!result?.order_id) {
       setError('Produit introuvable ou inactif.')
       setLoading(false)
       return false
     }
-
-    const { error: insertErr } = await supabase.from('orders').insert({
-      product_id:           product.id,
-      product_name:         product.name_fr,
-      product_price:        product.price,
-      quantity:             Math.max(1, params.quantity ?? 1),
-      customer_first_name:  params.firstName.trim(),
-      customer_last_name:   params.lastName.trim(),
-      customer_phone:       normalizePhone(params.phone),
-      customer_email:       params.email?.trim() || null,
-      channel:              'site',
-      status:               'new',
-      delivery_city:        params.deliveryCity?.trim() || null,
-      delivery_address:     params.deliveryAddress?.trim() || null,
-      delivery_district:    params.deliveryDistrict?.trim() || null,
-      delivery_landmark:    params.deliveryLandmark?.trim() || null,
-    })
-
-    if (insertErr) {
-      setError(insertErr.message)
-      setLoading(false)
-      return false
-    }
-
-    // Créer un rappel callback pour validation par un agent
-    const parts: string[] = [`Commande site : ${product.name_fr} — ${product.price} MAD`]
-    if (params.deliveryCity?.trim())    parts.push(params.deliveryCity.trim())
-    if (params.deliveryAddress?.trim()) parts.push(params.deliveryAddress.trim())
-
-    await supabase.rpc('create_callback_request', {
-      p_first_name:         params.firstName.trim(),
-      p_last_name:          params.lastName.trim(),
-      p_phone:              normalizePhone(params.phone),
-      p_email:              params.email?.trim() || null,
-      p_city:               params.deliveryCity?.trim() || null,
-      p_message:            parts.join(' | '),
-      p_preferred_slot:     'asap',
-      p_preferred_datetime: null,
-    })
-    // Echec silencieux : la commande est enregistrée même si le rappel échoue
 
     setSuccess(true)
     setLoading(false)
