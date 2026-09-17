@@ -88,7 +88,7 @@ Deno.serve(async (req: Request) => {
     const state  = url.searchParams.get('state')
     const errParam = url.searchParams.get('error')
 
-    const frontendBase = `${siteUrl}/#/admin/email-settings`
+    const frontendBase = `${siteUrl}/#/admin/settings/email`
 
     if (errParam) {
       return Response.redirect(`${frontendBase}?oauth_error=${encodeURIComponent(errParam)}`, 302)

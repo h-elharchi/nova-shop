@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   MessageSquare, Mail, Phone, Clock, Check, X, Zap, ArrowLeftRight,
-  ChevronRight, User, Inbox, AlertCircle, Copy, ExternalLink,
+  ChevronRight, User, Inbox, AlertCircle, Copy, ExternalLink, RefreshCw,
 } from 'lucide-react'
 import { AdminLayout } from './AdminLayout'
 import { useI18n } from '../../context/LanguageContext'
@@ -17,7 +17,7 @@ import { AdminChatInput } from '../../components/chat/admin/AdminChatInput'
 import { PauseModal } from '../../components/chat/admin/PauseModal'
 import { supabase } from '../../lib/supabase'
 import { loadDispositionCodes } from '../../lib/chat'
-import { sendEmail } from '../../lib/email'
+import { sendEmail, triggerEmailSync } from '../../lib/email'
 import type { InteractionWithDetails, InteractionChannel, UnifiedWrapUpData, CallbackAttemptResult } from '../../types/interactions'
 import type { CrcDispositionCode } from '../../types/chat'
 import type { EmailMessage } from '../../types'
@@ -793,12 +793,26 @@ export function WorkspacePage() {
   const [showPause, setShowPause] = useState(false)
   const [showTransfer, setShowTransfer] = useState(false)
   const [showWrapUp, setShowWrapUp] = useState(false)
+  const [emailSyncing, setEmailSyncing] = useState(false)
 
   // Queue list
   const [queueList, setQueueList] = useState<InteractionWithDetails[]>([])
   const [queueLoading, setQueueLoading] = useState(false)
 
   useNotifications(waitingCount, true)
+
+  // Auto-sync emails : au montage + toutes les 5 minutes
+  const syncEmails = useCallback(async () => {
+    setEmailSyncing(true)
+    try { await triggerEmailSync() } catch { /* ignore */ }
+    finally { setEmailSyncing(false) }
+  }, [])
+
+  useEffect(() => {
+    syncEmails()
+    const id = setInterval(syncEmails, 5 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [syncEmails])
 
   const loadQueue = useCallback(async () => {
     setQueueLoading(true)
@@ -913,6 +927,16 @@ export function WorkspacePage() {
               <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-orange-500" />{queueCounts.callback}</span>
             )}
           </div>
+
+          {/* Email sync button */}
+          <button
+            onClick={syncEmails}
+            disabled={emailSyncing}
+            title={t('email.sync')}
+            className="p-1.5 text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 disabled:opacity-40 transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${emailSyncing ? 'animate-spin' : ''}`} />
+          </button>
 
           {/* Next button */}
           <button
