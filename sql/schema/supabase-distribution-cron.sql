@@ -14,13 +14,14 @@ SELECT cron.unschedule(jobid)
 FROM cron.job
 WHERE jobname = 'route-interactions';
 
--- ─── Planifier route_interactions toutes les 30 secondes ─────
--- Note : pg_cron standard supporte la syntaxe d'intervalle 'N seconds' sur Supabase.
--- Si votre version ne supporte pas '30 seconds', utiliser '* * * * *' (toutes les minutes).
+-- ─── Planifier route_interactions toutes les 2 secondes ──────
+-- Note : pg_cron supporte la syntaxe d'intervalle '[1-59] seconds' depuis 1.4+
+-- (Supabase fournit 1.6.4). Si votre version ne le supporte pas, repasser à
+-- '30 seconds' ou '* * * * *' (toutes les minutes).
 
 SELECT cron.schedule(
   'route-interactions',
-  '30 seconds',
+  '2 seconds',
   $$SELECT public.route_interactions()$$
 );
 

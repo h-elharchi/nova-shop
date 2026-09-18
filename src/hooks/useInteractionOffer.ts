@@ -55,8 +55,13 @@ export function useInteractionOffer(agentId: string | null) {
     if (channelRef.current) supabase.removeChannel(channelRef.current)
     const channel = supabase
       .channel(`offer-${instanceId.current}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'interactions' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'interactions' }, (payload) => {
         if (mounted.current) refreshOffer()
+        // Nouvelle interaction en file (ou remise en file après refus/expiration/transfert) :
+        // relancer la distribution tout de suite. Global (pas seulement sur /admin/workspace),
+        // pour que la notification + sonnerie marchent peu importe la page admin active.
+        const row = payload.new as { status?: string } | null
+        if (row?.status === 'queued') supabase.rpc('route_interactions')
       })
       .subscribe()
     channelRef.current = channel
@@ -65,11 +70,16 @@ export function useInteractionOffer(agentId: string | null) {
     }
   }, [agentId, refreshOffer])
 
-  // Filet de sécurité indépendant du Realtime : garantit que la carte/sonnerie
-  // apparaît sous ~2s même si l'événement postgres_changes est raté ou retardé.
+  // Filet de sécurité indépendant du Realtime, global à toute page admin :
+  // garantit que la distribution avance et que la carte/sonnerie apparaît sous
+  // ~2s même si l'événement postgres_changes est raté ou retardé.
   useEffect(() => {
     if (!agentId) return
-    const interval = setInterval(refreshOffer, 2000)
+    supabase.rpc('route_interactions')
+    const interval = setInterval(() => {
+      supabase.rpc('route_interactions')
+      refreshOffer()
+    }, 2000)
     return () => clearInterval(interval)
   }, [agentId, refreshOffer])
 

@@ -77,6 +77,14 @@ BEGIN
   SELECT COALESCE(REPLACE(value::text, '"', ''), 'offer') INTO v_callback_mode
   FROM crc_settings WHERE key = 'callback_distribution_mode';
 
+  -- 0. Basculer hors ligne les agents dont le battement est périmé (coupure réseau,
+  --    crash navigateur, mise en veille...) — sinon leur statut reste figé "disponible"
+  --    indéfiniment en base même si pagehide ne s'est jamais déclenché côté client.
+  UPDATE chat_agents
+  SET status = 'offline', updated_at = now()
+  WHERE status != 'offline'
+    AND last_seen_at < now() - INTERVAL '2 minutes';
+
   -- 1. Libérer les propositions expirées → retour en file
   UPDATE interactions
   SET status = 'queued', offered_to = NULL, offered_at = NULL, offer_expires_at = NULL

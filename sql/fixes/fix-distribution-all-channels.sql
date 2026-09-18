@@ -5,6 +5,10 @@
 -- alors qu'aucun agent n'est connecté, il reste "queued" indéfiniment jusqu'à ce
 -- qu'un agent disponible se connecte — c'est déjà le comportement existant.
 --
+-- Ajoute aussi : bascule automatique "hors ligne" des agents dont le battement
+-- est périmé (>2 min) — coupure réseau, crash, veille... sans ça un agent
+-- déconnecté brutalement reste affiché "disponible" indéfiniment en base.
+--
 -- Exécuter dans Supabase SQL Editor.
 
 -- ─── 1. Nouveaux réglages : délai d'acceptation par canal ─────
@@ -46,6 +50,14 @@ BEGIN
 
   SELECT COALESCE(REPLACE(value::text, '"', ''), 'offer') INTO v_callback_mode
   FROM crc_settings WHERE key = 'callback_distribution_mode';
+
+  -- 0. Basculer hors ligne les agents dont le battement est périmé (coupure réseau,
+  --    crash navigateur, mise en veille...) — sinon leur statut reste figé "disponible"
+  --    indéfiniment en base même si pagehide ne s'est jamais déclenché côté client.
+  UPDATE chat_agents
+  SET status = 'offline', updated_at = now()
+  WHERE status != 'offline'
+    AND last_seen_at < now() - INTERVAL '2 minutes';
 
   -- 1. Libérer les propositions expirées → retour en file
   UPDATE interactions
