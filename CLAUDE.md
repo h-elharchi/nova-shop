@@ -87,9 +87,20 @@ HashRouter
 
 ---
 
-## 5. Fichiers SQL — Ordre d'exécution STRICT
+## 5. Fichiers SQL — Organisation et ordre d'exécution STRICT
 
-**Tous les fichiers sont dans la racine du projet. Exécuter dans cet ordre dans Supabase SQL Editor :**
+**Tous les fichiers SQL sont dans `sql/` (organisés par sous-dossier). Exécuter dans cet ordre dans Supabase SQL Editor :**
+
+```
+sql/
+├── schema/        ← Schémas principaux (exécuter dans l'ordre du tableau ci-dessous)
+├── migrations/    ← Scripts one-shot (exécuter une seule fois après les schémas)
+├── fixes/         ← Correctifs ponctuels et patches
+├── diagnostics/   ← Requêtes de diagnostic (lecture seule)
+└── maintenance/   ← Scripts de maintenance (purge, etc.)
+```
+
+### Schémas — `sql/schema/` (ordre strict)
 
 | Ordre | Fichier | Contenu |
 |---|---|---|
@@ -101,12 +112,45 @@ HashRouter
 | 6 | `supabase-supervision.sql` | **Lot 3.** Fonctions : get_agents_dashboard(), get_supervision_kpis(period,date_from,date_to,agent_id), get_conversation_history(status,agent_id,…,page,page_size). |
 | 7 | `supabase-customers.sql` | **Lot 5.** Table customers (phone UNIQUE, source). Trigger updated_at. RLS is_staff(). Realtime. |
 | 8 | `supabase-orders-v2.sql` | **Lot 5.** Ajoute customer_id, channel (5 valeurs), assigned_agent_id, notes, callback_at à orders. Migration statuts (completed→delivered, 12 statuts). RPC create_order_admin (SECURITY DEFINER). |
-| 8b | `migrate-customers.sql` | **Lot 5 — migration une seule fois.** Peuple customers depuis orders existantes, met à jour orders.customer_id. |
 | 9 | `supabase-email.sql` | **Lot 6.** Vault helpers (store/read/update_vault_secret, GRANT service_role uniquement). Tables : email_accounts, email_messages, email_sync_log. RLS. Realtime. Vue email_messages_view. Fonction match_customer_by_email_address. |
-| 10 | `supabase-workspace.sql` | **Lots 7–11.** Tables : interactions, email_threads, callback_requests, callback_attempts, customer_addresses, customer_audit_log. Étend customers (status, version, customer_number, city, notes_internal). RPCs : route_interactions, accept_interaction_offer, reject_interaction_offer, take_next_interaction, activate_interaction, start_wrap_up, close_interaction, transfer_interaction, create_callback_request, record_callback_attempt, archive_customer, restore_customer, delete_customer, get_customer_audit. Vue customers_view. |
-| 11 | `migrate-interactions.sql` | **Lots 7–11 — migration une seule fois.** Migre chat_conversations → interactions, crée email_threads depuis email_messages. |
+| 10 | `supabase-interactions.sql` | **Lots 7–11.** Tables : interactions, email_threads, callback_requests, callback_attempts, customer_addresses, customer_audit_log. Étend customers (status, version, customer_number, city, notes_internal). RPCs : route_interactions, accept/reject_interaction_offer, take_next_interaction, activate_interaction, start_wrap_up, close_interaction, transfer_interaction, create_callback_request, record_callback_attempt, archive_customer, restore_customer, delete_customer, get_customer_audit. |
+| 11 | `supabase-customers-v2.sql` | Vue customers_view (order_count, delivered_count, interaction_count, default_city). |
+| 12 | `supabase-distribution.sql` | Fonction route_interactions() + distribution automatique. |
+| 13 | `supabase-distribution-cron.sql` | pg_cron job pour route_interactions() (toutes les 10s). |
+| 14 | `supabase-orders-address.sql` | Champs adresse de livraison sur orders. |
+| 15 | `supabase-chat-timeout.sql` | Timeout automatique des conversations chat. |
+| 16 | `add-order-quantity.sql` | Colonne quantity sur orders. |
+
+### Migrations one-shot — `sql/migrations/`
+
+| Fichier | Moment d'exécution |
+|---|---|
+| `migrate-customers.sql` | Après étape 8 — peuple customers depuis orders existantes |
+| `migrate-interactions.sql` | Après étape 10 — migre chat_conversations → interactions |
+
+### Patches — `sql/fixes/`
+
+| Fichier | Description |
+|---|---|
+| `patch-customers-view-delivered.sql` | Ajoute delivered_count à customers_view (DROP + recreate) |
+| `fix-foreign-keys.sql` | Correctif clés étrangères |
+| `fix-callback-attempt.sql` | Correctif table callback_attempts |
+| `fix-chat-interaction-bridge.sql` | Liaison chat ↔ interactions |
+| `fix-delete-customer.sql` | Correctif suppression client |
+| `fix-email-interaction-bridge.sql` | Liaison email ↔ interactions |
+| `fix-order-callback-trigger.sql` | Trigger commande → rappel |
+| `fix-order-site-flow.sql` | Correctif flux commande site |
+
+### Diagnostics — `sql/diagnostics/` (lecture seule)
+
+`diagnostic-agents.sql`, `diagnostic-customers.sql`, `diagnostic-foreign-keys.sql`, `diagnostic-routing.sql`, `diagnostic-workspace-counts.sql`
+
+### Maintenance — `sql/maintenance/`
+
+`purge-transactional-data.sql` — purge données transactionnelles (conserve produits/utilisateurs/paramètres)
 
 **⚠ Après modification d'une fonction SQL (signature ou type de retour), faire `DROP FUNCTION IF EXISTS ...` avant `CREATE OR REPLACE`.**
+**⚠ Pour recréer une vue avec des colonnes réordonnées : `DROP VIEW IF EXISTS nom_vue;` puis `CREATE VIEW ...`.**
 
 ---
 
@@ -126,18 +170,12 @@ nova-shop/
 ├── vite.config.ts                    # base: '/nova-shop/' — CRITIQUE
 ├── tailwind.config.js                # darkMode: 'class', couleurs custom dark
 ├── tsconfig.app.json                 # strict: true, noUnusedLocals/Parameters
-├── supabase-setup.sql                # Base e-commerce
-├── supabase-orders.sql               # Commandes (schéma initial)
-├── supabase-chat.sql                 # Chat temps réel
-├── supabase-accounts.sql             # Lot 1 : comptes, rôles, avatars
-├── supabase-crc.sql                  # Lot 2 : CRC, wrap-up, transfert
-├── supabase-supervision.sql          # Lot 3 : KPI, supervision, historique
-├── supabase-customers.sql            # Lot 5 : table customers, RLS, Realtime
-├── supabase-orders-v2.sql            # Lot 5 : migration statuts + canal + RPC create_order_admin
-├── migrate-customers.sql             # Lot 5 : script migration une seule fois (peuple customers)
-├── supabase-email.sql                # Lot 6 : email_accounts, email_messages, Vault helpers
-├── supabase-workspace.sql            # Lots 7–11 : interactions, email_threads, callback_requests, customers_v2, RPCs
-├── migrate-interactions.sql          # Lots 7–11 : migration une seule fois (chat_conversations → interactions)
+├── sql/
+│   ├── schema/                       # Schémas principaux (ordre d'exécution section 5)
+│   ├── migrations/                   # Scripts one-shot (migrate-customers, migrate-interactions)
+│   ├── fixes/                        # Correctifs et patches ponctuels
+│   ├── diagnostics/                  # Requêtes de diagnostic (lecture seule)
+│   └── maintenance/                  # Scripts de maintenance (purge-transactional-data)
 │
 └── src/
     ├── main.tsx
