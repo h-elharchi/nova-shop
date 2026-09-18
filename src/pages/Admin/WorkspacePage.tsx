@@ -12,6 +12,7 @@ import { useCallbackDetail } from '../../hooks/useCallbacks'
 import { useChatMessages } from '../../hooks/useChatMessages'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
 import { useNotifications } from '../../hooks/useNotifications'
+import { useRingtone } from '../../hooks/useRingtone'
 import { ChatMessage } from '../../components/chat/ChatMessage'
 import { AdminChatInput } from '../../components/chat/admin/AdminChatInput'
 import { CustomerOrdersPanel } from '../../components/orders/CustomerOrdersPanel'
@@ -842,6 +843,7 @@ export function WorkspacePage() {
   const [queueLoading, setQueueLoading] = useState(false)
 
   useNotifications(waitingCount, true)
+  useRingtone(!!offeredInteraction)
 
   // Auto-sync emails : au montage + toutes les 5 minutes
   const syncEmails = useCallback(async () => {
