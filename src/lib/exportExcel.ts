@@ -153,7 +153,7 @@ export function exportCustomersToExcel(
   const dataRows = customers.map(c => [
     c.customer_number ?? '',
     `${c.first_name} ${c.last_name}`.trim(),
-    c.phone,
+    c.phone ?? '',
     c.email ?? '',
     c.default_city ?? '',
     c.source,

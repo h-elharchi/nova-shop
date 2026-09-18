@@ -97,15 +97,17 @@ BEGIN
     ELSE               v_from := date_trunc('day', now());
   END CASE;
 
+  -- Agrégé sur `interactions` (chat + email + rappel), pas seulement chat_conversations,
+  -- pour que la supervision reflète tous les canaux distribués via route_interactions().
   SELECT json_build_object(
     'total_received',      COUNT(*),
-    'total_taken',         COUNT(*) FILTER (WHERE assigned_admin_id IS NOT NULL),
+    'total_taken',         COUNT(*) FILTER (WHERE assigned_at IS NOT NULL),
     'total_closed',        COUNT(*) FILTER (WHERE status = 'closed'),
     'total_timeout',       COUNT(*) FILTER (WHERE status = 'timeout'),
-    'total_waiting',       COUNT(*) FILTER (WHERE status = 'waiting'),
+    'total_waiting',       COUNT(*) FILTER (WHERE status IN ('queued','offered')),
     'take_rate_pct',       CASE WHEN COUNT(*) > 0
                                 THEN ROUND(100.0
-                                  * COUNT(*) FILTER (WHERE assigned_admin_id IS NOT NULL)
+                                  * COUNT(*) FILTER (WHERE assigned_at IS NOT NULL)
                                   / COUNT(*))::INT
                                 ELSE NULL END,
     -- DMA / ASA (secondes)
@@ -141,19 +143,19 @@ BEGIN
           dc.name_fr,
           dc.name_ar,
           COUNT(*) AS cnt
-        FROM  chat_conversations   cc
-        JOIN  crc_disposition_codes dc ON dc.id = cc.disposition_code_id
-        WHERE cc.created_at >= v_from
-          AND cc.created_at <  v_to
-          AND (p_agent_id IS NULL OR cc.assigned_admin_id = p_agent_id)
+        FROM  interactions          i
+        JOIN  crc_disposition_codes dc ON dc.id = i.disposition_code_id
+        WHERE i.created_at >= v_from
+          AND i.created_at <  v_to
+          AND (p_agent_id IS NULL OR i.assigned_agent_id = p_agent_id)
         GROUP BY dc.id, dc.code, dc.name_fr, dc.name_ar
       ) d
     )
   ) INTO v_result
-  FROM chat_conversations
+  FROM interactions
   WHERE created_at >= v_from
     AND created_at <  v_to
-    AND (p_agent_id IS NULL OR assigned_admin_id = p_agent_id);
+    AND (p_agent_id IS NULL OR assigned_agent_id = p_agent_id);
 
   RETURN v_result;
 END;

@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS public.chat_conversations (
   customer_first_name TEXT NOT NULL,
   customer_last_name  TEXT NOT NULL,
   customer_phone      TEXT NOT NULL,
+  customer_email      TEXT,
   status              TEXT NOT NULL DEFAULT 'waiting'
                         CHECK (status IN ('waiting','active','closed','timeout')),
   assigned_admin_id   UUID NULL REFERENCES auth.users(id) ON DELETE SET NULL,

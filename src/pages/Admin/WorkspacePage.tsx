@@ -293,6 +293,7 @@ function EmailPanel({ interaction, onWrapUp }: {
   const [sending, setSending] = useState(false)
   const [sentMsg, setSentMsg] = useState('')
   const [emailAccountId, setEmailAccountId] = useState<string | null>(null)
+  const [showCreateCustomer, setShowCreateCustomer] = useState(false)
 
   useEffect(() => {
     supabase
@@ -355,6 +356,15 @@ function EmailPanel({ interaction, onWrapUp }: {
 
   return (
     <>
+      {!interaction.customer_id && firstIn && (
+        <div className="flex items-center justify-between gap-2 px-4 py-2 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-100 dark:border-orange-900/40 shrink-0">
+          <span className="text-xs text-orange-700 dark:text-orange-400">{t('interactions.create_customer_banner')}</span>
+          <button onClick={() => setShowCreateCustomer(true)}
+            className="text-xs font-medium text-orange-700 dark:text-orange-400 hover:underline shrink-0">
+            {t('interactions.create_customer_btn')}
+          </button>
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {thread.length === 0 && (
           <p className="text-sm text-gray-400 text-center py-8">{t('email.no_messages')}</p>
@@ -395,6 +405,15 @@ function EmailPanel({ interaction, onWrapUp }: {
           </>
         )}
       </div>
+      {showCreateCustomer && firstIn && (
+        <CreateCustomerModal
+          interactionId={interaction.id}
+          defaultFirstName={parseSenderAddress(firstIn.from_address).firstName}
+          defaultLastName={parseSenderAddress(firstIn.from_address).lastName}
+          defaultEmail={parseSenderAddress(firstIn.from_address).email}
+          onClose={() => setShowCreateCustomer(false)}
+        />
+      )}
     </>
   )
 }
@@ -757,6 +776,94 @@ function InlineTransferModal({ onTransfer, onClose, currentAgentId }: InlineTran
               {loading ? '…' : t('chat.admin_transfer_submit')}
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Create Customer Modal ──────────────────────────────────────
+
+function parseSenderAddress(fromAddress: string): { firstName: string; lastName: string; email: string } {
+  const match = fromAddress.match(/^"?([^"<]*)"?\s*<([^>]+)>$/)
+  const email = (match ? match[2] : fromAddress).trim()
+  const name = (match ? match[1] : '').trim()
+  const [firstName, ...rest] = name.split(/\s+/).filter(Boolean)
+  return { firstName: firstName ?? '', lastName: rest.join(' '), email }
+}
+
+function CreateCustomerModal({ interactionId, defaultFirstName, defaultLastName, defaultEmail, onClose }: {
+  interactionId: string
+  defaultFirstName?: string
+  defaultLastName?: string
+  defaultEmail?: string
+  onClose: () => void
+}) {
+  const { t } = useI18n()
+  const [firstName, setFirstName] = useState(defaultFirstName ?? '')
+  const [lastName, setLastName] = useState(defaultLastName ?? '')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState(defaultEmail ?? '')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit() {
+    if (!firstName.trim()) { setError(t('interactions.create_customer_error_name')); return }
+    setError('')
+    setSaving(true)
+    const { error: err } = await supabase.rpc('create_customer_from_interaction', {
+      p_interaction_id: interactionId,
+      p_first_name: firstName.trim(),
+      p_last_name: lastName.trim(),
+      p_phone: phone.trim() || null,
+      p_email: email.trim() || null,
+    })
+    setSaving(false)
+    if (!err) onClose()
+    else setError(err.message)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white dark:bg-dark-card rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-gray-900 dark:text-white">{t('interactions.create_customer_title')}</h3>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="space-y-3 mb-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">{t('chat.first_name')} *</label>
+            <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">{t('chat.last_name')}</label>
+            <input type="text" value={lastName} onChange={e => setLastName(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">{t('chat.phone')}</label>
+            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">{t('callback.form_email')}</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+        </div>
+        {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
+        <div className="flex gap-2">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 rounded-xl transition-colors">
+            {t('forms.cancel')}
+          </button>
+          <button onClick={handleSubmit} disabled={saving}
+            className="flex-1 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-xl transition-colors">
+            {saving ? '…' : t('interactions.create_customer_submit')}
+          </button>
         </div>
       </div>
     </div>

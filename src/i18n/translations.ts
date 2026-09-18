@@ -700,6 +700,11 @@ export const translations = {
       queue_empty: 'File vide',
       no_active: 'Aucune interaction active',
       activate: 'Activer',
+      create_customer_banner: 'Client non identifié',
+      create_customer_btn: 'Créer un client',
+      create_customer_title: 'Créer un client',
+      create_customer_submit: 'Créer',
+      create_customer_error_name: 'Le prénom est requis',
     },
     workspace: {
       title: 'Espace de travail',
@@ -1493,6 +1498,11 @@ export const translations = {
       queue_empty: 'الطابور فارغ',
       no_active: 'لا توجد تفاعلات نشطة',
       activate: 'تفعيل',
+      create_customer_banner: 'عميل غير معروف',
+      create_customer_btn: 'إنشاء عميل',
+      create_customer_title: 'إنشاء عميل',
+      create_customer_submit: 'إنشاء',
+      create_customer_error_name: 'الاسم الأول مطلوب',
     },
     workspace: {
       title: 'مساحة العمل',

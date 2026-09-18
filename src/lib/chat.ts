@@ -34,6 +34,7 @@ export async function createConversation(params: {
   firstName: string
   lastName: string
   phone: string
+  email?: string
 }): Promise<ChatConversation | null> {
   const userId = await ensureAnonAuth()
   if (!userId) return null
@@ -45,6 +46,7 @@ export async function createConversation(params: {
       customer_first_name: params.firstName.trim(),
       customer_last_name: params.lastName.trim(),
       customer_phone: params.phone.replace(/\s+/g, ''),
+      customer_email: params.email?.trim() || null,
       status: 'waiting',
     })
     .select()

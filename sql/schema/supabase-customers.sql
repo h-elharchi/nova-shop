@@ -9,7 +9,10 @@ BEGIN;
 -- ─── Table clients ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS customers (
   id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone      TEXT        UNIQUE NOT NULL,
+  -- Nullable : un client peut être créé par téléphone, par email, ou les deux
+  -- (ex. depuis une interaction email sans numéro connu) — voir la contrainte
+  -- customers_phone_or_email_check plus bas.
+  phone      TEXT        UNIQUE,
   first_name TEXT        NOT NULL,
   last_name  TEXT        NOT NULL DEFAULT '',
   email      TEXT,
@@ -17,7 +20,8 @@ CREATE TABLE IF NOT EXISTS customers (
   source     TEXT        NOT NULL DEFAULT 'site'
                CHECK (source IN ('site','whatsapp','email','chat','phone')),
   created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT customers_phone_or_email_check CHECK (phone IS NOT NULL OR email IS NOT NULL)
 );
 
 -- Trigger updated_at

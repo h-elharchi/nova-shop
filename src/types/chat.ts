@@ -19,6 +19,7 @@ export interface ChatConversation {
   customer_first_name: string
   customer_last_name: string
   customer_phone: string
+  customer_email: string | null
   status: ChatConversationStatus
   assigned_admin_id: string | null
   queue_position: number | null

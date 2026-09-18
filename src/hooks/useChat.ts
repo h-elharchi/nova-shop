@@ -159,6 +159,7 @@ export function useChat() {
       firstName: formData.firstName,
       lastName: formData.lastName,
       phone: normalizePhone(formData.phone),
+      email: formData.email,
     })
 
     if (!conv || !mounted.current) {

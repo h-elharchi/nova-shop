@@ -139,7 +139,7 @@ export type CustomerStatus = 'active' | 'archived' | 'blocked' | 'merged' | 'ano
 
 export interface CustomerV2 {
   id: string
-  phone: string
+  phone: string | null
   first_name: string
   last_name: string
   email: string | null

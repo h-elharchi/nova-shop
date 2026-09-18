@@ -13,7 +13,8 @@ import { exportCustomersToExcel } from '../../lib/exportExcel'
 import { supabase } from '../../lib/supabase'
 import type { CustomerView, CustomerAddress } from '../../types/interactions'
 
-function formatPhone(phone: string): string {
+function formatPhone(phone: string | null): string | null {
+  if (!phone) return null
   const c = phone.replace(/\s+/g, '')
   if (c.startsWith('0')) return '+212' + c.slice(1)
   return c.startsWith('00212') ? '+' + c.slice(2) : c
@@ -265,13 +266,17 @@ function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: Custo
               )}
             </div>
             <div className="flex items-center gap-3 mt-1 flex-wrap">
-              <a href={`tel:${tel}`} className="text-sm text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                <Phone className="w-3.5 h-3.5" />{customer.phone}
-              </a>
-              <a href={`https://wa.me/${tel.replace('+', '')}?text=${waMsg}`} target="_blank" rel="noopener noreferrer"
-                className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-lg flex items-center gap-1">
-                <MessageCircle className="w-3 h-3" />WA
-              </a>
+              {tel && (
+                <>
+                  <a href={`tel:${tel}`} className="text-sm text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                    <Phone className="w-3.5 h-3.5" />{customer.phone}
+                  </a>
+                  <a href={`https://wa.me/${tel.replace('+', '')}?text=${waMsg}`} target="_blank" rel="noopener noreferrer"
+                    className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                    <MessageCircle className="w-3 h-3" />WA
+                  </a>
+                </>
+              )}
               {customer.email && <span className="text-sm text-gray-500 dark:text-gray-400">{customer.email}</span>}
             </div>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -350,7 +355,7 @@ function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: Custo
           {activeTab === 'orders' && (
             <CustomerOrdersPanel
               customerId={customer.id}
-              prefillCustomer={{ first_name: customer.first_name, last_name: customer.last_name, phone: customer.phone }}
+              prefillCustomer={{ first_name: customer.first_name, last_name: customer.last_name, phone: customer.phone ?? '' }}
               defaultChannel="phone"
             />
           )}
@@ -642,13 +647,17 @@ export function CustomersPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <a href={`tel:${tel}`} className="text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 text-xs">{c.phone}</a>
-                            <a href={`https://wa.me/${tel.replace('+', '')}?text=${waMsg}`} target="_blank" rel="noopener noreferrer"
-                              className="text-green-600 dark:text-green-400 hover:opacity-70">
-                              <MessageCircle className="w-3.5 h-3.5" />
-                            </a>
-                          </div>
+                          {tel ? (
+                            <div className="flex items-center gap-2">
+                              <a href={`tel:${tel}`} className="text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 text-xs">{c.phone}</a>
+                              <a href={`https://wa.me/${tel.replace('+', '')}?text=${waMsg}`} target="_blank" rel="noopener noreferrer"
+                                className="text-green-600 dark:text-green-400 hover:opacity-70">
+                                <MessageCircle className="w-3.5 h-3.5" />
+                              </a>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{c.email ?? '—'}</td>
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{c.default_city ?? '—'}</td>

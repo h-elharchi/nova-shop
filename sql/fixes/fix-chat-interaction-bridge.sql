@@ -42,16 +42,18 @@ DECLARE
   v_interaction_id UUID;
 BEGIN
   -- Upsert customer depuis les données du formulaire chat
-  INSERT INTO customers (phone, first_name, last_name, source)
+  INSERT INTO customers (phone, first_name, last_name, email, source)
   VALUES (
     NEW.customer_phone,
     NEW.customer_first_name,
     NEW.customer_last_name,
+    NULLIF(NEW.customer_email, ''),
     'chat'
   )
   ON CONFLICT (phone) DO UPDATE
     SET first_name = EXCLUDED.first_name,
         last_name  = EXCLUDED.last_name,
+        email      = COALESCE(EXCLUDED.email, customers.email),
         updated_at = now()
   RETURNING id INTO v_customer_id;
 

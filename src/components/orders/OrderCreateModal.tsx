@@ -7,7 +7,7 @@ import { MOROCCAN_CITIES } from '../../lib/moroccanCities'
 import { supabase } from '../../lib/supabase'
 import type { Product, OrderChannel } from '../../types'
 
-type CustomerLike = { id: string; first_name: string; last_name: string; phone: string; email?: string | null }
+type CustomerLike = { id: string; first_name: string; last_name: string; phone: string | null; email?: string | null }
 
 const CHANNELS: OrderChannel[] = ['site', 'whatsapp', 'email', 'chat', 'phone']
 
