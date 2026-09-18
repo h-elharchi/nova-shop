@@ -10,9 +10,10 @@ export function useWorkspace(agentId: string | null) {
   const [queueCounts, setQueueCounts]             = useState({ chat: 0, email: 0, callback: 0, total: 0 })
   const [loading, setLoading]                     = useState(true)
 
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
-  const instanceId = useRef(`${Date.now()}-${Math.random().toString(36).slice(2, 7)}`)
-  const mounted    = useRef(true)
+  const channelRef   = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const instanceId   = useRef(`${Date.now()}-${Math.random().toString(36).slice(2, 7)}`)
+  const mounted      = useRef(true)
+  const activatingRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     mounted.current = true
@@ -64,7 +65,19 @@ export function useWorkspace(agentId: string | null) {
     ])
 
     if (!mounted.current) return
-    const mapped = (mineRes.data ?? []).map(mapRow)
+
+    // Pas d'étape "Activer" manuelle : toute interaction qui m'est assignée
+    // (offre acceptée, ou assignation directe en mode "direct") passe aussitôt en
+    // "active" pour que je puisse la traiter tout de suite ; je clôture avec "Terminer".
+    const mapped = (mineRes.data ?? []).map(mapRow).map(i => {
+      if (i.status === 'assigned' && !activatingRef.current.has(i.id)) {
+        activatingRef.current.add(i.id)
+        const done = () => activatingRef.current.delete(i.id)
+        supabase.rpc('activate_interaction', { p_interaction_id: i.id }).then(done, done)
+        return { ...i, status: 'active' as const }
+      }
+      return i
+    })
     setMyInteractions(mapped)
     setOfferedInteraction(offeredRes.data?.[0] ? mapRow(offeredRes.data[0] as Record<string, unknown>) : null)
 
@@ -113,6 +126,17 @@ export function useWorkspace(agentId: string | null) {
     }
   }, [agentId, refresh])
 
+  // Filet de sécurité : relance la distribution périodiquement même si pg_cron
+  // n'est pas configuré côté Supabase (sinon les interactions restent "queued").
+  useEffect(() => {
+    if (!agentId) return
+    supabase.rpc('route_interactions')
+    const interval = setInterval(() => {
+      supabase.rpc('route_interactions')
+    }, 8000)
+    return () => clearInterval(interval)
+  }, [agentId])
+
   const openInteraction = useCallback((interaction: InteractionWithDetails) => {
     setActiveInteraction(interaction)
   }, [])
@@ -138,20 +162,6 @@ export function useWorkspace(agentId: string | null) {
     if (!error) await refresh()
     return !error
   }, [offeredInteraction, refresh])
-
-  const takeNext = useCallback(async (channel?: InteractionChannel): Promise<boolean> => {
-    const { error } = await supabase.rpc('take_next_interaction', {
-      p_channel: channel ?? null,
-    })
-    if (!error) await refresh()
-    return !error
-  }, [refresh])
-
-  const activateInteraction = useCallback(async (id: string): Promise<boolean> => {
-    const { error } = await supabase.rpc('activate_interaction', { p_interaction_id: id })
-    if (!error) await refresh()
-    return !error
-  }, [refresh])
 
   const startWrapUp = useCallback(async (id: string): Promise<boolean> => {
     const { error } = await supabase.rpc('start_wrap_up', { p_interaction_id: id })
@@ -205,8 +215,6 @@ export function useWorkspace(agentId: string | null) {
     closePanel,
     acceptOffer,
     rejectOffer,
-    takeNext,
-    activateInteraction,
     startWrapUp,
     closeInteraction,
     transferInteraction,

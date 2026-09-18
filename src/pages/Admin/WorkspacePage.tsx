@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  MessageSquare, Mail, Phone, Clock, Check, X, Zap, ArrowLeftRight,
+  MessageSquare, Mail, Phone, Clock, X, ArrowLeftRight,
   ChevronRight, User, Inbox, AlertCircle, Copy, ExternalLink, RefreshCw, ShoppingBag, Plus,
 } from 'lucide-react'
 import { AdminLayout } from './AdminLayout'
@@ -817,7 +817,7 @@ export function WorkspacePage() {
   const workspace = useWorkspace(user?.id ?? null)
   const {
     activeInteraction, myInteractions, offeredInteraction, queueCounts,
-    openInteraction, closePanel, acceptOffer, rejectOffer, takeNext,
+    openInteraction, closePanel, acceptOffer, rejectOffer,
     startWrapUp, closeInteraction, transferInteraction,
   } = workspace
 
@@ -964,11 +964,6 @@ export function WorkspacePage() {
               className="p-1.5 text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 disabled:opacity-40 transition-colors">
               <RefreshCw className={`w-3.5 h-3.5 ${emailSyncing ? 'animate-spin' : ''}`} />
             </button>
-            <button onClick={() => takeNext(channelFilter === 'all' ? undefined : channelFilter)}
-              disabled={queueCounts.total === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl disabled:opacity-40">
-              <Zap className="w-3.5 h-3.5" />{t('workspace.next_btn')}
-            </button>
           </div>
 
           {/* ── Mobile top bar ── */}
@@ -987,13 +982,6 @@ export function WorkspacePage() {
               <button onClick={syncEmails} disabled={emailSyncing} title={t('email.sync')}
                 className="p-1.5 text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg disabled:opacity-40 transition-colors">
                 <RefreshCw className={`w-3.5 h-3.5 ${emailSyncing ? 'animate-spin' : ''}`} />
-              </button>
-              <button onClick={() => takeNext(channelFilter === 'all' ? undefined : channelFilter)}
-                disabled={queueCounts.total === 0}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl disabled:opacity-40">
-                <Zap className="w-3.5 h-3.5" />
-                {t('workspace.next_btn')}
-                {queueCounts.total > 0 && <span className="ml-0.5">({queueCounts.total})</span>}
               </button>
             </div>
             {/* Row 2 : status action buttons */}
@@ -1121,12 +1109,6 @@ export function WorkspacePage() {
                         {t('interactions.wrap_up_title')}
                       </button>
                     )}
-                    {activeInteraction.status === 'assigned' && (
-                      <button onClick={() => workspace.activateInteraction(activeInteraction.id)}
-                        className="px-3 py-1.5 text-xs font-medium bg-green-600 hover:bg-green-700 text-white rounded-xl">
-                        <Check className="w-3.5 h-3.5 inline mr-1" />{t('interactions.activate')}
-                      </button>
-                    )}
                     <button onClick={closePanel}
                       className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">
                       <X className="w-4 h-4" />
@@ -1244,12 +1226,6 @@ export function WorkspacePage() {
                     <button onClick={() => setShowWrapUp(true)}
                       className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white rounded-xl animate-pulse">
                       <AlertCircle className="w-3.5 h-3.5" />{t('interactions.wrap_up_title')}
-                    </button>
-                  )}
-                  {activeInteraction.status === 'assigned' && (
-                    <button onClick={() => workspace.activateInteraction(activeInteraction.id)}
-                      className="px-2.5 py-1.5 text-xs font-medium bg-green-600 hover:bg-green-700 text-white rounded-xl">
-                      <Check className="w-3.5 h-3.5 inline mr-1" />{t('interactions.activate')}
                     </button>
                   )}
                   <button onClick={() => { closePanel(); setMobileView('list') }}
