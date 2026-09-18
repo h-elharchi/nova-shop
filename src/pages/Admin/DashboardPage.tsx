@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Package, CheckCircle, XCircle, Star, Sparkles, Tag, ShoppingCart, Phone } from 'lucide-react'
+import { Package, CheckCircle, XCircle, Star, Sparkles, Tag, ShoppingCart, Phone, Filter, X } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useI18n } from '../../context/LanguageContext'
 import { useOrderStats } from '../../hooks/useOrders'
+import type { OrderStatsFilters } from '../../hooks/useOrders'
 import { OrderStatusBadge } from '../../components/orders/OrderStatusBadge'
 import { AdminLayout } from './AdminLayout'
 import type { OrderStatus } from '../../types'
+
+interface CategoryOption { id: string; name_fr: string; name_ar: string }
+interface ProductOption  { id: string; name_fr: string; name_ar: string }
 
 const STATUS_CONFIG: Record<OrderStatus, { bg: string; text: string; border: string }> = {
   new:         { bg: 'bg-blue-50 dark:bg-blue-900/20',      text: 'text-blue-700 dark:text-blue-300',      border: 'border-blue-100 dark:border-blue-800/40' },
@@ -48,10 +52,58 @@ function timeAgo(dateStr: string): string {
 }
 
 export function AdminDashboard() {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const [stats, setStats] = useState<ProductStats>({ total: 0, active: 0, inactive: 0, featured: 0, new_products: 0, categories: 0 })
   const [loadingProducts, setLoadingProducts] = useState(true)
-  const { byStatus, recent, loading: loadingOrders } = useOrderStats()
+
+  // Filtres commandes
+  const [filters, setFilters] = useState<OrderStatsFilters>({})
+  const [dateFrom, setDateFrom]     = useState('')
+  const [dateTo, setDateTo]         = useState('')
+  const [categoryId, setCategoryId] = useState('')
+  const [productId, setProductId]   = useState('')
+  const [categories, setCategories] = useState<CategoryOption[]>([])
+  const [products, setProducts]     = useState<ProductOption[]>([])
+  const [showFilters, setShowFilters] = useState(false)
+
+  const hasActiveFilters = !!(filters.dateFrom || filters.dateTo || filters.categoryId || filters.productId)
+
+  const { byStatus, recent, loading: loadingOrders } = useOrderStats(filters)
+
+  // Chargement des catégories
+  useEffect(() => {
+    supabase.from('categories').select('id,name_fr,name_ar').eq('is_active', true).order('name_fr')
+      .then(({ data }) => setCategories((data ?? []) as CategoryOption[]))
+  }, [])
+
+  // Chargement des produits (filtré par catégorie si sélectionnée)
+  const loadProducts = useCallback(async (catId: string) => {
+    let q = supabase.from('products').select('id,name_fr,name_ar').eq('is_active', true).order('name_fr')
+    if (catId) q = q.eq('category_id', catId)
+    const { data } = await q
+    setProducts((data ?? []) as ProductOption[])
+  }, [])
+
+  useEffect(() => { loadProducts(categoryId) }, [categoryId, loadProducts])
+
+  const applyFilters = () => {
+    setFilters({
+      dateFrom:   dateFrom   || undefined,
+      dateTo:     dateTo     || undefined,
+      categoryId: categoryId || undefined,
+      productId:  productId  || undefined,
+    })
+  }
+
+  const resetFilters = () => {
+    setDateFrom(''); setDateTo(''); setCategoryId(''); setProductId('')
+    setFilters({})
+  }
+
+  const handleCategoryChange = (val: string) => {
+    setCategoryId(val)
+    setProductId('')
+  }
 
   useEffect(() => {
     async function fetchStats() {
@@ -114,10 +166,102 @@ export function AdminDashboard() {
           <ShoppingCart className="w-5 h-5 text-blue-600 dark:text-blue-400" />
           {t('order.orders')}
         </h2>
-        <Link to="/admin/orders" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
-          {t('sections.view_all')}
-        </Link>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowFilters(v => !v)}
+            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-colors ${
+              hasActiveFilters
+                ? 'bg-blue-600 text-white border-blue-600 dark:bg-blue-500 dark:border-blue-500'
+                : 'text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-surface'
+            }`}
+          >
+            <Filter className="w-3.5 h-3.5" />
+            {t('order.filter_period')}
+            {hasActiveFilters && <span className="ml-1 bg-white/20 text-xs px-1.5 py-0.5 rounded-full">●</span>}
+          </button>
+          <Link to="/admin/orders" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+            {t('sections.view_all')}
+          </Link>
+        </div>
       </div>
+
+      {/* Panneau filtres */}
+      {showFilters && (
+        <div className="bg-white dark:bg-dark-card border border-gray-100 dark:border-dark-border rounded-xl p-4 mb-4 space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {/* Date de début */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('order.date_from')}</label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="text-sm border border-gray-200 dark:border-dark-border rounded-lg px-2.5 py-1.5 bg-white dark:bg-dark-surface text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            {/* Date de fin */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('order.date_to')}</label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="text-sm border border-gray-200 dark:border-dark-border rounded-lg px-2.5 py-1.5 bg-white dark:bg-dark-surface text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            {/* Catégorie */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('order.filter_category')}</label>
+              <select
+                value={categoryId}
+                onChange={e => handleCategoryChange(e.target.value)}
+                className="text-sm border border-gray-200 dark:border-dark-border rounded-lg px-2.5 py-1.5 bg-white dark:bg-dark-surface text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">{t('order.filter_all_categories')}</option>
+                {categories.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {lang === 'ar' ? c.name_ar : c.name_fr}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {/* Produit */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('order.filter_product')}</label>
+              <select
+                value={productId}
+                onChange={e => setProductId(e.target.value)}
+                className="text-sm border border-gray-200 dark:border-dark-border rounded-lg px-2.5 py-1.5 bg-white dark:bg-dark-surface text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">{t('order.filter_all_products')}</option>
+                {products.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {lang === 'ar' ? p.name_ar : p.name_fr}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-2 pt-1">
+            {hasActiveFilters && (
+              <button
+                onClick={resetFilters}
+                className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-dark-surface transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+                {t('order.reset_filters')}
+              </button>
+            )}
+            <button
+              onClick={applyFilters}
+              className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg transition-colors"
+            >
+              {t('common.apply')}
+            </button>
+          </div>
+        </div>
+      )}
 
       {loadingOrders ? (
         <div className="flex justify-center py-6">

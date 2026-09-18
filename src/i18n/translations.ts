@@ -205,6 +205,7 @@ export const translations = {
       cancel: 'Annuler',
       edit: 'Modifier',
       delete: 'Supprimer',
+      apply: 'Appliquer',
     },
     chat: {
       btn: 'Chat',
@@ -512,6 +513,8 @@ export const translations = {
       orders_cancelled: 'Annulées',
       filter_status: 'Statut',
       filter_product: 'Produit',
+      filter_category: 'Catégorie',
+      filter_all_categories: 'Toutes les catégories',
       filter_period: 'Période',
       filter_all_products: 'Tous les produits',
       period_all: 'Toutes les dates',
@@ -988,6 +991,7 @@ export const translations = {
       cancel: 'إلغاء',
       edit: 'تعديل',
       delete: 'حذف',
+      apply: 'تطبيق',
     },
     chat: {
       btn: 'دردشة',
@@ -1295,6 +1299,8 @@ export const translations = {
       orders_cancelled: 'ملغاة',
       filter_status: 'الحالة',
       filter_product: 'المنتج',
+      filter_category: 'الفئة',
+      filter_all_categories: 'جميع الفئات',
       filter_period: 'الفترة',
       filter_all_products: 'جميع المنتجات',
       period_all: 'كل التواريخ',

@@ -214,7 +214,14 @@ const ALL_STATUSES: OrderStatus[] = [
 
 export type OrderStatsByStatus = Record<OrderStatus, number>
 
-export function useOrderStats() {
+export interface OrderStatsFilters {
+  dateFrom?:   string
+  dateTo?:     string
+  categoryId?: string
+  productId?:  string
+}
+
+export function useOrderStats(filters: OrderStatsFilters = {}) {
   const [byStatus, setByStatus] = useState<OrderStatsByStatus>(() => {
     const init = {} as OrderStatsByStatus
     ALL_STATUSES.forEach(s => { init[s] = 0 })
@@ -223,13 +230,41 @@ export function useOrderStats() {
   const [recent, setRecent]   = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
 
+  const { dateFrom, dateTo, categoryId, productId } = filters
+
   useEffect(() => {
-    async function fetch() {
-      const { data } = await supabase
+    async function load() {
+      setLoading(true)
+
+      // Résoudre les IDs produits depuis la catégorie (si filtre catégorie actif)
+      let allowedProductIds: string[] | null = null
+      if (categoryId && !productId) {
+        const { data: prods } = await supabase
+          .from('products')
+          .select('id')
+          .eq('category_id', categoryId)
+        allowedProductIds = (prods ?? []).map((p: { id: string }) => p.id)
+        if (allowedProductIds.length === 0) {
+          const counts = {} as OrderStatsByStatus
+          ALL_STATUSES.forEach(s => { counts[s] = 0 })
+          setByStatus(counts)
+          setRecent([])
+          setLoading(false)
+          return
+        }
+      }
+
+      let query = supabase
         .from('orders')
-        .select('status, customer_first_name, customer_last_name, customer_phone, product_name, created_at, id')
+        .select('status, product_id, customer_first_name, customer_last_name, customer_phone, product_name, created_at, id')
         .order('created_at', { ascending: false })
 
+      if (productId)                    query = query.eq('product_id', productId)
+      else if (allowedProductIds)       query = query.in('product_id', allowedProductIds)
+      if (dateFrom) query = query.gte('created_at', new Date(dateFrom + 'T00:00:00').toISOString())
+      if (dateTo)   query = query.lte('created_at', new Date(dateTo   + 'T23:59:59.999').toISOString())
+
+      const { data } = await query
       const all = (data ?? []) as Order[]
 
       const counts = {} as OrderStatsByStatus
@@ -240,8 +275,8 @@ export function useOrderStats() {
       setRecent(all.slice(0, 5))
       setLoading(false)
     }
-    fetch()
-  }, [])
+    load()
+  }, [dateFrom, dateTo, categoryId, productId])
 
   return { byStatus, recent, loading }
 }
