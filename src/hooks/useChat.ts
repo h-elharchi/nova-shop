@@ -12,7 +12,8 @@ import {
 import { validateMoroccanPhone, normalizePhone } from './useOrders'
 import type { ChatConversation, ChatWidgetState } from '../types/chat'
 
-const TIMEOUT_SECONDS = 30
+const SEARCHING_TIMEOUT_SECONDS = 60  // délai avant timeout si aucun agent en ligne
+const WAITING_TIMEOUT_SECONDS   = 60  // délai avant timeout en file d'attente
 
 export interface CustomerFormData {
   firstName: string
@@ -26,12 +27,13 @@ export function useChat() {
   const [isOpen, setIsOpen] = useState(false)
   const [conversation, setConversation] = useState<ChatConversation | null>(null)
   const [queuePosition, setQueuePosition] = useState<number | null>(null)
-  const [countdown, setCountdown] = useState(TIMEOUT_SECONDS)
+  const [countdown, setCountdown] = useState(SEARCHING_TIMEOUT_SECONDS)
   const [error, setError] = useState<string | null>(null)
 
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const countdownRef      = useRef<ReturnType<typeof setInterval> | null>(null)
+  const waitingTimerRef   = useRef<ReturnType<typeof setTimeout>  | null>(null)
   const agentWatchChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
-  const convSubscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const convSubscriptionRef  = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const mounted = useRef(true)
 
   useEffect(() => {
@@ -60,9 +62,17 @@ export function useChat() {
     return () => {
       mounted.current = false
       stopCountdown()
+      stopWaitingTimer()
       cleanupSubscription()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const stopWaitingTimer = useCallback(() => {
+    if (waitingTimerRef.current !== null) {
+      clearTimeout(waitingTimerRef.current)
+      waitingTimerRef.current = null
+    }
   }, [])
 
   const stopCountdown = useCallback(() => {
@@ -106,11 +116,15 @@ export function useChat() {
 
           if (updated.status === 'active') {
             stopCountdown()
+            stopWaitingTimer()
             setWidgetState('active')
           } else if (updated.status === 'closed') {
+            stopWaitingTimer()
             setWidgetState('closed')
             clearChatSession()
           } else if (updated.status === 'timeout') {
+            stopWaitingTimer()
+            stopCountdown()
             setWidgetState('timeout')
             clearChatSession()
           }
@@ -119,7 +133,7 @@ export function useChat() {
       .subscribe()
 
     convSubscriptionRef.current = channel
-  }, [stopCountdown])
+  }, [stopCountdown, stopWaitingTimer])
 
   const openWidget = useCallback(() => {
     setIsOpen(true)
@@ -177,9 +191,18 @@ export function useChat() {
       // Agents présents (disponibles ou occupés) → file d'attente workspace
       setQueuePosition(conv.queue_position)
       setWidgetState('waiting')
+      // Timer client 60 s : si aucun agent ne prend la conv, fermer la session
+      stopWaitingTimer()
+      waitingTimerRef.current = setTimeout(() => {
+        if (!mounted.current) return
+        stopWaitingTimer()
+        setWidgetState('timeout')
+        clearChatSession()
+        setConversation(null)
+      }, WAITING_TIMEOUT_SECONDS * 1000)
     } else {
-      // Aucun agent en ligne → 30s countdown
-      setCountdown(TIMEOUT_SECONDS)
+      // Aucun agent en ligne → countdown 60 s
+      setCountdown(SEARCHING_TIMEOUT_SECONDS)
       setWidgetState('searching')
       startCountdown(conv.id)
     }
@@ -189,9 +212,9 @@ export function useChat() {
 
   const startCountdown = useCallback((convId: string) => {
     stopCountdown()
-    let remaining = TIMEOUT_SECONDS
+    let remaining = SEARCHING_TIMEOUT_SECONDS
 
-    // Subscribe to agent changes during countdown
+    // Surveiller les agents pendant le décompte : si un agent devient disponible, assigner
     const agentChannel = supabase
       .channel(`agents-watch:${convId}`)
       .on(
@@ -202,7 +225,7 @@ export function useChat() {
           const status = await checkAgentsOnline()
           if (status.available_count > 0) {
             await assignToAvailableAdmin(convId)
-            // Conversation subscription handles the status → active transition
+            // Le Realtime sur chat_conversations gère la transition → active
           }
         }
       )
@@ -218,36 +241,38 @@ export function useChat() {
       if (remaining <= 0) {
         stopCountdown()
         if (!mounted.current) return
-        // La conversation reste en 'waiting' dans la DB — le workspace
-        // la distribuera dès qu'un agent sera disponible.
-        // On bascule en mode file d'attente sans effacer la session.
-        setWidgetState('waiting')
+        // Aucun agent trouvé dans le délai → timeout client
+        setWidgetState('timeout')
+        clearChatSession()
+        setConversation(null)
       }
     }, 1000)
   }, [stopCountdown])
 
   const resetToIdle = useCallback(() => {
     stopCountdown()
+    stopWaitingTimer()
     cleanupSubscription()
     clearChatSession()
     setConversation(null)
     setQueuePosition(null)
-    setCountdown(TIMEOUT_SECONDS)
+    setCountdown(SEARCHING_TIMEOUT_SECONDS)
     setError(null)
     setWidgetState('idle')
     setIsOpen(false)
-  }, [stopCountdown, cleanupSubscription])
+  }, [stopCountdown, stopWaitingTimer, cleanupSubscription])
 
   const startNewConversation = useCallback(() => {
     stopCountdown()
+    stopWaitingTimer()
     cleanupSubscription()
     clearChatSession()
     setConversation(null)
     setQueuePosition(null)
-    setCountdown(TIMEOUT_SECONDS)
+    setCountdown(SEARCHING_TIMEOUT_SECONDS)
     setError(null)
     setWidgetState('form')
-  }, [stopCountdown, cleanupSubscription])
+  }, [stopCountdown, stopWaitingTimer, cleanupSubscription])
 
   return {
     widgetState,
