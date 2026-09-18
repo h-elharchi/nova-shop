@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx'
 import type { Order, OrderStatus } from '../types'
 import type { ConversationHistoryItem } from '../types/chat'
+import type { CustomerView } from '../types/interactions'
 
 const STATUS_LABELS: Record<string, Partial<Record<OrderStatus, string>>> = {
   fr: {
@@ -119,6 +120,78 @@ export function exportOrdersToExcel(
   const blob = new Blob([buf], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export interface CustomerExportHeaders {
+  number: string
+  name: string
+  phone: string
+  email: string
+  city: string
+  source: string
+  orders: string
+  status: string
+  created_at: string
+}
+
+export function exportCustomersToExcel(
+  customers: CustomerView[],
+  headers: CustomerExportHeaders,
+  filename: string,
+): void {
+  const headerRow = [
+    headers.number, headers.name, headers.phone, headers.email,
+    headers.city, headers.source, headers.orders, headers.status, headers.created_at,
+  ]
+
+  const dataRows = customers.map(c => [
+    c.customer_number ?? '',
+    `${c.first_name} ${c.last_name}`.trim(),
+    c.phone,
+    c.email ?? '',
+    c.default_city ?? '',
+    c.source,
+    c.order_count,
+    c.status,
+    formatDate(c.created_at),
+  ])
+
+  const ws = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows])
+  ws['!cols'] = [
+    { wch: 12 }, // N°
+    { wch: 22 }, // Nom
+    { wch: 16 }, // Téléphone
+    { wch: 24 }, // Email
+    { wch: 18 }, // Ville
+    { wch: 12 }, // Source
+    { wch: 10 }, // Commandes
+    { wch: 12 }, // Statut
+    { wch: 14 }, // Date création
+  ]
+  if (ws['!ref']) ws['!autofilter'] = { ref: ws['!ref'] }
+  if (!ws['!views']) ws['!views'] = []
+  ws['!views'].push({ state: 'frozen', xSplit: 0, ySplit: 1, topLeftCell: 'A2', activeCell: 'A2', sqref: 'A2' })
+
+  // Téléphone en texte
+  const range = ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : null
+  if (range) {
+    for (let r = 1; r <= range.e.r; r++) {
+      const addr = XLSX.utils.encode_cell({ r, c: 2 })
+      const cell = ws[addr]
+      if (cell) { cell.t = 's'; cell.z = '@' }
+    }
+  }
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Clients')
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

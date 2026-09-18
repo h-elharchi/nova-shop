@@ -7,6 +7,9 @@ export interface CustomerFilters {
   status?: 'active' | 'archived' | 'blocked' | 'all'
   page?: number
   pageSize?: number
+  dateFrom?: string
+  dateTo?: string
+  ordersFilter?: '' | 'none' | 'with' | '5plus'
 }
 
 export function useCustomers(filters: CustomerFilters = {}) {
@@ -51,6 +54,17 @@ export function useCustomers(filters: CustomerFilters = {}) {
       )
     }
 
+    if (filters.dateFrom) {
+      query = query.gte('created_at', filters.dateFrom + 'T00:00:00')
+    }
+    if (filters.dateTo) {
+      query = query.lte('created_at', filters.dateTo + 'T23:59:59.999')
+    }
+
+    if (filters.ordersFilter === 'none')  query = query.eq('order_count', 0)
+    if (filters.ordersFilter === 'with')  query = query.gte('order_count', 1)
+    if (filters.ordersFilter === '5plus') query = query.gte('order_count', 5)
+
     const { data, error: err, count } = await query
     if (!mounted.current) return
     if (err) { setError(err.message) } else {
@@ -58,7 +72,7 @@ export function useCustomers(filters: CustomerFilters = {}) {
       setTotal(count ?? 0)
     }
     setLoading(false)
-  }, [filters.search, filters.status, filters.page, filters.pageSize])
+  }, [filters.search, filters.status, filters.page, filters.pageSize, filters.dateFrom, filters.dateTo, filters.ordersFilter])
 
   useEffect(() => { fetch() }, [fetch])
 

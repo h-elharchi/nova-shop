@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Search, Phone, MessageCircle, Plus, X, ExternalLink,
   Archive, RotateCcw, Trash2, AlertTriangle, ChevronLeft, ChevronRight,
-  MapPin, Tag,
+  MapPin, Tag, Download,
 } from 'lucide-react'
 import { AdminLayout } from './AdminLayout'
 import { useCustomers, useCustomerAddresses, useCustomerAudit } from '../../hooks/useCustomers'
 import { useI18n } from '../../context/LanguageContext'
 import { OrderCreateModal } from '../../components/orders/OrderCreateModal'
 import { CustomerOrdersPanel } from '../../components/orders/CustomerOrdersPanel'
+import { exportCustomersToExcel } from '../../lib/exportExcel'
 import { supabase } from '../../lib/supabase'
 import type { CustomerView, CustomerAddress } from '../../types/interactions'
 
@@ -388,14 +389,18 @@ function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: Custo
 const PAGE_SIZE = 30
 
 export function CustomersPage() {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const [searchInput, setSearchInput]   = useState('')
   const [search, setSearch]             = useState('')
   const [statusFilter, setStatusFilter] = useState<'active' | 'archived' | 'blocked' | 'all'>('active')
+  const [dateFrom, setDateFrom]         = useState('')
+  const [dateTo, setDateTo]             = useState('')
+  const [ordersFilter, setOrdersFilter] = useState<'' | 'none' | 'with' | '5plus'>('')
   const [page, setPage]                 = useState(1)
   const [selected, setSelected]         = useState<CustomerView | null>(null)
   const [showCreate, setShowCreate]     = useState(false)
   const [isAdmin, setIsAdmin]           = useState(false)
+  const [exporting, setExporting]       = useState(false)
 
   useEffect(() => {
     const timer = setTimeout(() => { setSearch(searchInput); setPage(1) }, 350)
@@ -411,6 +416,9 @@ export function CustomersPage() {
     status: statusFilter,
     page,
     pageSize: PAGE_SIZE,
+    dateFrom: dateFrom || undefined,
+    dateTo:   dateTo   || undefined,
+    ordersFilter: ordersFilter || undefined,
   })
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
@@ -420,6 +428,54 @@ export function CustomersPage() {
     setSelected(null)
   }, [refetch])
 
+  const resetFilters = useCallback(() => {
+    setDateFrom('')
+    setDateTo('')
+    setOrdersFilter('')
+    setPage(1)
+  }, [])
+
+  const hasExtraFilters = dateFrom || dateTo || ordersFilter
+
+  const handleExport = useCallback(async () => {
+    setExporting(true)
+    let q = supabase
+      .from('customers_view')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(5000)
+
+    const s = statusFilter !== 'all' ? statusFilter : null
+    if (s) q = q.eq('status', s)
+    else   q = q.not('status', 'in', '("anonymized","merged")')
+
+    if (search.trim()) {
+      const p = `%${search.trim()}%`
+      q = q.or(`first_name.ilike.${p},last_name.ilike.${p},phone.ilike.${p},email.ilike.${p},customer_number.ilike.${p}`)
+    }
+    if (dateFrom) q = q.gte('created_at', dateFrom + 'T00:00:00')
+    if (dateTo)   q = q.lte('created_at', dateTo + 'T23:59:59.999')
+    if (ordersFilter === 'none')  q = q.eq('order_count', 0)
+    if (ordersFilter === 'with')  q = q.gte('order_count', 1)
+    if (ordersFilter === '5plus') q = q.gte('order_count', 5)
+
+    const { data } = await q
+    if (data && data.length > 0) {
+      exportCustomersToExcel(data as CustomerView[], {
+        number:     t('customers.excel_number'),
+        name:       t('customers.excel_name'),
+        phone:      t('customers.excel_phone'),
+        email:      t('customers.excel_email'),
+        city:       t('customers.excel_city'),
+        source:     t('customers.excel_source'),
+        orders:     t('customers.excel_orders'),
+        status:     t('customers.excel_status'),
+        created_at: t('customers.excel_created_at'),
+      }, `clients_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    }
+    setExporting(false)
+  }, [search, statusFilter, dateFrom, dateTo, ordersFilter, lang, t])
+
   const STATUS_OPTS: { value: typeof statusFilter; labelKey: string }[] = [
     { value: 'active',   labelKey: 'customers_v2.status_active' },
     { value: 'archived', labelKey: 'customers_v2.status_archived' },
@@ -427,9 +483,18 @@ export function CustomersPage() {
     { value: 'all',      labelKey: 'filters.all_categories' },
   ]
 
+  const ORDERS_OPTS: { value: '' | 'none' | 'with' | '5plus'; labelKey: string }[] = [
+    { value: '',      labelKey: 'customers.filter_orders_all' },
+    { value: 'none',  labelKey: 'customers.filter_orders_none' },
+    { value: 'with',  labelKey: 'customers.filter_orders_with' },
+    { value: '5plus', labelKey: 'customers.filter_orders_5plus' },
+  ]
+
+  const inputCls = 'border border-gray-200 dark:border-gray-600 bg-white dark:bg-dark-card text-gray-900 dark:text-gray-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+
   return (
     <AdminLayout>
-      <div className="max-w-6xl mx-auto space-y-5">
+      <div className="max-w-7xl mx-auto space-y-5">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -440,33 +505,79 @@ export function CustomersPage() {
               </p>
             )}
           </div>
-          <button onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors">
-            <Plus className="w-4 h-4" />{t('customers_v2.new_customer')}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExport}
+              disabled={exporting || loading}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-dark-card text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              {exporting ? '…' : t('customers.export_excel')}
+            </button>
+            <button onClick={() => setShowCreate(true)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors">
+              <Plus className="w-4 h-4" />{t('customers_v2.new_customer')}
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder={t('customers.search')}
-              value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
-              className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-dark-card text-gray-900 dark:text-gray-100 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition placeholder:text-gray-400"
-            />
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder={t('customers.search')}
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                className={`w-full ${inputCls} pl-9`}
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={e => { setStatusFilter(e.target.value as typeof statusFilter); setPage(1) }}
+              className={inputCls}
+            >
+              {STATUS_OPTS.map(o => (
+                <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
+              ))}
+            </select>
           </div>
-          <select
-            value={statusFilter}
-            onChange={e => { setStatusFilter(e.target.value as typeof statusFilter); setPage(1) }}
-            className="border border-gray-200 dark:border-gray-600 bg-white dark:bg-dark-card text-gray-900 dark:text-gray-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {STATUS_OPTS.map(o => (
-              <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{t('customers.filter_date_from')}</span>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e => { setDateFrom(e.target.value); setPage(1) }}
+                className={inputCls}
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{t('customers.filter_date_to')}</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={e => { setDateTo(e.target.value); setPage(1) }}
+                className={inputCls}
+              />
+            </div>
+            <select
+              value={ordersFilter}
+              onChange={e => { setOrdersFilter(e.target.value as typeof ordersFilter); setPage(1) }}
+              className={inputCls}
+            >
+              {ORDERS_OPTS.map(o => (
+                <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
+              ))}
+            </select>
+            {hasExtraFilters && (
+              <button onClick={resetFilters} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                <X className="w-3.5 h-3.5" />{t('common.cancel')}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* States */}
@@ -492,7 +603,9 @@ export function CustomersPage() {
                       t('customers.col_name'),
                       t('customers.col_phone'),
                       t('customers.col_email'),
+                      t('customers.col_city'),
                       t('customers.col_orders'),
+                      t('customers.col_created_at'),
                       t('customers_v2.filter_status'),
                       '',
                     ].map((h, i) => (
@@ -522,7 +635,11 @@ export function CustomersPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{c.email ?? '—'}</td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{c.default_city ?? '—'}</td>
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs text-center">{c.order_count}</td>
+                        <td className="px-4 py-3 text-gray-400 dark:text-gray-500 text-xs whitespace-nowrap">
+                          {new Date(c.created_at).toLocaleDateString('fr-MA')}
+                        </td>
                         <td className="px-4 py-3">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[c.status] ?? ''}`}>
                             {t(`customers_v2.status_${c.status}`)}
