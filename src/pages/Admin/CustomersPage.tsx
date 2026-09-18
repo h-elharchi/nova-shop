@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Search, Phone, MessageCircle, Plus, X, ExternalLink,
   Archive, RotateCcw, Trash2, AlertTriangle, ChevronLeft, ChevronRight,
-  MapPin, Tag, Download, BadgeCheck,
+  MapPin, Tag, Download, BadgeCheck, GitMerge,
 } from 'lucide-react'
 import { AdminLayout } from './AdminLayout'
 import { useCustomers, useCustomerAddresses, useCustomerAudit } from '../../hooks/useCustomers'
@@ -108,6 +108,101 @@ function DeleteModal({ customer, onConfirm, onClose, t, error }: {
   )
 }
 
+// ─── Modal fusion ─────────────────────────────────────────────
+
+function MergeModal({ customer, onConfirm, onClose, t, error }: {
+  customer: CustomerView
+  onConfirm: (targetId: string) => void
+  onClose: () => void
+  t: (k: string) => string
+  error?: string | null
+}) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<CustomerView[]>([])
+  const [searching, setSearching] = useState(false)
+  const [selected, setSelected] = useState<CustomerView | null>(null)
+
+  useEffect(() => {
+    if (query.trim().length < 2) { setResults([]); return }
+    setSearching(true)
+    const timeout = setTimeout(async () => {
+      const s = `%${query.trim()}%`
+      const { data } = await supabase
+        .from('customers_view')
+        .select('*')
+        .neq('id', customer.id)
+        .not('status', 'in', '("anonymized","merged")')
+        .or(`first_name.ilike.${s},last_name.ilike.${s},phone.ilike.${s},email.ilike.${s},customer_number.ilike.${s}`)
+        .limit(8)
+      setResults((data ?? []) as CustomerView[])
+      setSearching(false)
+    }, 300)
+    return () => clearTimeout(timeout)
+  }, [query, customer.id])
+
+  return (
+    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white dark:bg-dark-card rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+        <h3 className="font-bold text-gray-900 dark:text-white">{t('customers_v2.merge_title')}</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          {t('customers_v2.merge_into').replace('{name}', `${customer.first_name} ${customer.last_name}`)}
+        </p>
+
+        {!selected ? (
+          <>
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder={t('customers_v2.merge_search_placeholder')}
+              className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              autoFocus
+            />
+            <div className="max-h-56 overflow-y-auto space-y-1">
+              {searching && <p className="text-xs text-gray-400 text-center py-3">{t('common.loading')}</p>}
+              {!searching && query.trim().length >= 2 && results.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-3">{t('common.no_results')}</p>
+              )}
+              {results.map(r => (
+                <button key={r.id} onClick={() => setSelected(r)}
+                  className="w-full text-left px-3 py-2 rounded-lg border border-gray-100 dark:border-dark-border hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">{r.first_name} {r.last_name}</p>
+                  <p className="text-xs text-gray-400">{r.phone ?? '—'}{r.email ? ` · ${r.email}` : ''}</p>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="space-y-3">
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
+              <p className="text-sm font-medium text-gray-900 dark:text-white">{selected.first_name} {selected.last_name}</p>
+              <p className="text-xs text-gray-400">{selected.phone ?? '—'}{selected.email ? ` · ${selected.email}` : ''}</p>
+            </div>
+            <p className="flex items-start gap-1.5 text-xs text-orange-600 dark:text-orange-400">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              {t('customers_v2.merge_warning')}
+            </p>
+          </div>
+        )}
+
+        {error && (
+          <p className="text-xs text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>
+        )}
+
+        <div className="flex gap-2 justify-end">
+          <button onClick={selected ? () => setSelected(null) : onClose} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:underline">
+            {selected ? t('customers_v2.merge_back') : t('common.cancel')}
+          </button>
+          {selected && (
+            <button onClick={() => onConfirm(selected.id)} className="px-4 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
+              {t('customers_v2.merge_confirm')}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Addresses tab ────────────────────────────────────────────
 
 function AddressesTab({ customerId, t }: { customerId: string; t: (k: string) => string }) {
@@ -194,7 +289,7 @@ interface CustomerDetailModalProps {
 }
 
 function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: CustomerDetailModalProps) {
-  const { updateNotes, archiveCustomer, restoreCustomer, deleteCustomer } = useCustomers()
+  const { updateNotes, archiveCustomer, restoreCustomer, deleteCustomer, mergeCustomers } = useCustomers()
   const { audit } = useCustomerAudit(customer.id)
   const [notes, setNotes]     = useState(customer.notes ?? '')
   const [saving, setSaving]   = useState(false)
@@ -202,9 +297,11 @@ function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: Custo
   const [activeTab, setActiveTab] = useState<DetailTab>('orders')
   const [showArchive, setShowArchive] = useState(false)
   const [showDelete, setShowDelete]   = useState(false)
+  const [showMerge, setShowMerge]     = useState(false)
   const [actionMsg, setActionMsg] = useState('')
   const [archiveError, setArchiveError] = useState<string | null>(null)
   const [deleteError, setDeleteError]   = useState<string | null>(null)
+  const [mergeError, setMergeError]     = useState<string | null>(null)
 
   async function handleSaveNotes() {
     setSaving(true)
@@ -232,6 +329,17 @@ function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: Custo
       setTimeout(() => { onUpdated(); onClose() }, 1500)
     } else {
       setDeleteError(err)
+    }
+  }
+
+  async function handleMerge(targetId: string) {
+    setMergeError(null)
+    const { ok, error: err } = await mergeCustomers(customer.id, targetId)
+    if (ok) {
+      setActionMsg(t('customers_v2.merge_success'))
+      setTimeout(() => { onUpdated(); onClose() }, 1500)
+    } else {
+      setMergeError(err)
     }
   }
 
@@ -306,6 +414,12 @@ function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: Custo
               <button onClick={handleRestore} title={t('customers_v2.restore')}
                 className="p-1.5 rounded-lg text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20">
                 <RotateCcw className="w-4 h-4" />
+              </button>
+            )}
+            {customer.status !== 'anonymized' && customer.status !== 'merged' && (
+              <button onClick={() => setShowMerge(true)} title={t('customers_v2.merge')}
+                className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20">
+                <GitMerge className="w-4 h-4" />
               </button>
             )}
             {isAdmin && customer.status !== 'anonymized' && customer.status !== 'merged' && (
@@ -390,6 +504,9 @@ function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: Custo
       )}
       {showDelete && (
         <DeleteModal customer={customer} onConfirm={handleDelete} onClose={() => { setShowDelete(false); setDeleteError(null) }} t={t} error={deleteError} />
+      )}
+      {showMerge && (
+        <MergeModal customer={customer} onConfirm={handleMerge} onClose={() => { setShowMerge(false); setMergeError(null) }} t={t} error={mergeError} />
       )}
     </div>
   )

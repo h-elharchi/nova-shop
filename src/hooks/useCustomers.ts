@@ -171,6 +171,18 @@ export function useCustomers(filters: CustomerFilters = {}) {
     return data as { customer_id: string; customer_number: string; first_name: string; last_name: string; status: string }[] | null
   }, [])
 
+  const mergeCustomers = useCallback(async (
+    keepId: string,
+    mergeId: string,
+  ): Promise<{ ok: boolean; error: string | null }> => {
+    const { error: err } = await supabase.rpc('merge_customers', {
+      p_keep_id:  keepId,
+      p_merge_id: mergeId,
+    })
+    if (!err) await fetch()
+    return { ok: !err, error: err?.message ?? null }
+  }, [fetch])
+
   const findByPhone = useCallback(async (phone: string): Promise<CustomerView | null> => {
     const { data } = await supabase
       .from('customers_view')
@@ -193,6 +205,7 @@ export function useCustomers(filters: CustomerFilters = {}) {
     restoreCustomer,
     deleteCustomer,
     checkDuplicate,
+    mergeCustomers,
     findByPhone,
   }
 }

@@ -157,6 +157,8 @@ export function HistoryPage() {
         [t('history.col_channel')]:     r.channel,
         [t('history.col_client')]:      `${r.customer_first_name ?? ''} ${r.customer_last_name ?? ''}`.trim(),
         [t('history.col_phone')]:       r.customer_phone ?? '',
+        [t('history.col_email')]:       r.customer_email ?? '',
+        [t('history.col_city')]:        r.customer_city ?? '',
         [t('history.col_subject')]:     r.subject ?? '',
         [t('history.col_status')]:      r.status,
         [t('history.col_agent')]:       r.agent_first_name ? `${r.agent_first_name} ${r.agent_last_name ?? ''}`.trim() : '',
@@ -337,6 +339,8 @@ export function HistoryPage() {
                       t('history.col_channel'),
                       t('history.col_client'),
                       t('history.col_phone'),
+                      t('history.col_email'),
+                      t('history.col_city'),
                       t('history.col_subject'),
                       t('history.col_status'),
                       t('history.col_agent'),
@@ -366,6 +370,8 @@ export function HistoryPage() {
                           {`${row.customer_first_name ?? ''} ${row.customer_last_name ?? ''}`.trim() || '—'}
                         </td>
                         <td className="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{row.customer_phone ?? '—'}</td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{row.customer_email ?? '—'}</td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{row.customer_city ?? '—'}</td>
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs max-w-[160px] truncate">
                           {row.subject ?? '—'}
                         </td>

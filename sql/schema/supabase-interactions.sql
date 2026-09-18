@@ -249,6 +249,17 @@ CREATE INDEX IF NOT EXISTS audit_log_actor_idx   ON admin_audit_log (actor_id);
 CREATE INDEX IF NOT EXISTS audit_log_target_idx  ON admin_audit_log (target_id);
 CREATE INDEX IF NOT EXISTS audit_log_created_idx ON admin_audit_log (created_at DESC);
 
+-- Réconciliation avec l'autre définition de cette table (supabase-accounts.sql,
+-- Lot 1) : selon l'ordre d'exécution, CREATE TABLE IF NOT EXISTS ne crée que la
+-- première version rencontrée. On complète ici avec les colonnes de l'autre
+-- schéma (utilisées par l'Edge Function admin-users et purge_data()), pour que
+-- les deux familles de fonctions trouvent leurs colonnes quel que soit l'ordre.
+ALTER TABLE admin_audit_log
+  ADD COLUMN IF NOT EXISTS target_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS details        JSONB;
+ALTER TABLE admin_audit_log ALTER COLUMN target_id DROP NOT NULL;
+CREATE INDEX IF NOT EXISTS admin_audit_log_target_user_idx ON admin_audit_log(target_user_id);
+
 -- ─── Paramètres CRC complémentaires ──────────────────────────
 -- Capacités par défaut par canal
 INSERT INTO crc_settings (key, value, description) VALUES

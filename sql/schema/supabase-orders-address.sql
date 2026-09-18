@@ -18,7 +18,45 @@ ALTER TABLE orders
 CREATE INDEX IF NOT EXISTS orders_delivery_city_idx ON orders (delivery_city)
   WHERE delivery_city IS NOT NULL;
 
--- ─── 3. Recréation de create_order_admin avec nouveaux params ─
+-- ─── 3. Helper commun : upsert de l'adresse par défaut ────────
+-- Crée l'adresse par défaut du client si elle n'existe pas encore, sinon
+-- complète les champs manquants sans écraser ceux déjà renseignés.
+CREATE OR REPLACE FUNCTION upsert_customer_default_address(
+  p_customer_id UUID,
+  p_city        TEXT,
+  p_address     TEXT DEFAULT NULL,
+  p_district    TEXT DEFAULT NULL,
+  p_landmark    TEXT DEFAULT NULL
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF p_city IS NULL AND p_address IS NULL THEN
+    RETURN;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM customer_addresses WHERE customer_id = p_customer_id AND is_default = true
+  ) THEN
+    UPDATE customer_addresses SET
+      city       = COALESCE(p_city, city),
+      address    = COALESCE(p_address, address),
+      district   = COALESCE(p_district, district),
+      landmark   = COALESCE(p_landmark, landmark),
+      updated_at = now()
+    WHERE customer_id = p_customer_id AND is_default = true;
+  ELSE
+    INSERT INTO customer_addresses (customer_id, city, address, district, landmark, is_default, label)
+    VALUES (p_customer_id, p_city, p_address, p_district, p_landmark, true, 'Livraison');
+  END IF;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION upsert_customer_default_address TO authenticated, anon;
+
+-- ─── 4. Recréation de create_order_admin avec nouveaux params ─
 -- ⚠ DROP obligatoire car la signature change
 DROP FUNCTION IF EXISTS create_order_admin(
   UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TIMESTAMPTZ
@@ -70,13 +108,11 @@ BEGIN
         updated_at  = now()
   RETURNING id INTO v_customer_id;
 
-  -- Mettre à jour l'adresse par défaut si fournie
-  IF p_delivery_city IS NOT NULL AND p_delivery_address IS NOT NULL THEN
-    -- Créer adresse si elle n'existe pas encore pour ce client
-    INSERT INTO customer_addresses (customer_id, city, address, district, landmark, is_default, label)
-    VALUES (v_customer_id, p_delivery_city, p_delivery_address, p_delivery_district, p_delivery_landmark, true, 'Livraison')
-    ON CONFLICT DO NOTHING;
-  END IF;
+  -- Mettre à jour l'adresse par défaut (ville seule suffit, adresse complète
+  -- pas obligatoire)
+  PERFORM upsert_customer_default_address(
+    v_customer_id, p_delivery_city, p_delivery_address, p_delivery_district, p_delivery_landmark
+  );
 
   -- Insérer la commande
   RETURN QUERY

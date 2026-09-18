@@ -31,6 +31,7 @@ export interface InteractionHistoryItem {
   customer_last_name: string | null
   customer_phone: string | null
   customer_email: string | null
+  customer_city: string | null
   customer_number: string | null
   agent_first_name: string | null
   agent_last_name: string | null
@@ -61,7 +62,7 @@ export function useInteractionHistory() {
         .select(
           `id, channel, status, subject, queued_at, assigned_at, closed_at,
            wrap_up_seconds, wrap_up_notes, outcome,
-           customers!customer_id(first_name, last_name, phone, email, customer_number),
+           customers!customer_id(first_name, last_name, phone, email, customer_number, customer_addresses(city, is_default)),
            profiles!assigned_agent_id(first_name, last_name),
            crc_disposition_codes!disposition_code_id(code, name_fr, name_ar),
            chat_conversations!interaction_id(id)`,
@@ -84,12 +85,23 @@ export function useInteractionHistory() {
       const { data, error: err, count } = await q
       if (err) throw err
 
+      interface CustomerJoin {
+        first_name: string | null
+        last_name: string | null
+        phone: string | null
+        email: string | null
+        customer_number: string | null
+        customer_addresses?: { city: string | null; is_default: boolean }[]
+      }
+
       const mapped: InteractionHistoryItem[] = (data ?? []).map((row: Record<string, unknown>) => {
-        const c    = row.customers as Record<string, string | null> | null
+        const c    = row.customers as CustomerJoin | null
         const a    = row.profiles  as Record<string, string | null> | null
         const d    = row.crc_disposition_codes as Record<string, string | null> | null
         const conv = row.chat_conversations as { id: string } | { id: string }[] | null
         const convId = Array.isArray(conv) ? (conv[0]?.id ?? null) : (conv?.id ?? null)
+        const addresses = c?.customer_addresses ?? []
+        const city = (addresses.find(a2 => a2.is_default) ?? addresses[0])?.city ?? null
         return {
           id:                   row.id as string,
           channel:              row.channel as InteractionChannel,
@@ -106,6 +118,7 @@ export function useInteractionHistory() {
           customer_last_name:   c?.last_name  ?? null,
           customer_phone:       c?.phone      ?? null,
           customer_email:       c?.email      ?? null,
+          customer_city:        city,
           customer_number:      c?.customer_number ?? null,
           agent_first_name:     a?.first_name ?? null,
           agent_last_name:      a?.last_name  ?? null,

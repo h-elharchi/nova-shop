@@ -10,6 +10,8 @@
 -- double-crée pas l'interaction quand customer_id est déjà présent.
 --
 -- Idempotent — exécuter APRÈS supabase-workspace.sql et add-order-quantity.sql.
+-- Nécessite aussi upsert_customer_default_address() (voir
+-- supabase-orders-address.sql / fix-order-address-sync.sql).
 
 -- ─── 1. Mettre à jour le trigger de sécurité ──────────────────
 -- Il ne s'active plus que si customer_id est NULL
@@ -48,6 +50,10 @@ BEGIN
   RETURNING id INTO v_customer_id;
 
   UPDATE orders SET customer_id = v_customer_id WHERE id = NEW.id;
+
+  PERFORM upsert_customer_default_address(
+    v_customer_id, NEW.delivery_city, NEW.delivery_address, NEW.delivery_district, NEW.delivery_landmark
+  );
 
   -- ── Message ─────────────────────────────────────────────────
   v_msg := 'Commande site : ' || COALESCE(NEW.product_name, '—') ||
@@ -148,6 +154,10 @@ BEGIN
         last_name  = EXCLUDED.last_name,
         updated_at = NOW()
   RETURNING id INTO v_customer_id;
+
+  PERFORM upsert_customer_default_address(
+    v_customer_id, p_delivery_city, p_delivery_address, p_delivery_district, p_delivery_landmark
+  );
 
   -- ── Insérer la commande avec customer_id ─────────────────────
   INSERT INTO orders (
