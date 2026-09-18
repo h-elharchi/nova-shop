@@ -43,7 +43,7 @@ function ArchiveModal({ customer, onConfirm, onClose, t, error }: {
 }) {
   const [reason, setReason] = useState('')
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white dark:bg-dark-card rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
         <h3 className="font-bold text-gray-900 dark:text-white">{t('customers_v2.archive_confirm')}</h3>
         <p className="text-sm text-gray-600 dark:text-gray-400">{customer.first_name} {customer.last_name}</p>
@@ -76,7 +76,7 @@ function DeleteModal({ customer, onConfirm, onClose, t, error }: {
 }) {
   const [reason, setReason] = useState('')
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white dark:bg-dark-card rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
         <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
           <AlertTriangle className="w-5 h-5" />
@@ -208,7 +208,7 @@ function MergeModal({ customer, onConfirm, onClose, t, error }: {
   }
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white dark:bg-dark-card rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4">
         <h3 className="font-bold text-gray-900 dark:text-white">{t('customers_v2.merge_title')}</h3>
 
