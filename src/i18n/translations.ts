@@ -104,6 +104,11 @@ export const translations = {
       password_error: 'Impossible de modifier le mot de passe.',
       error_match: 'Les mots de passe ne correspondent pas.',
       error_length: 'Le mot de passe doit contenir au moins 8 caractères.',
+      preferences: 'Préférences',
+      language: 'Langue',
+      theme: 'Thème',
+      theme_dark: 'Sombre',
+      theme_light: 'Clair',
     },
     users: {
       title: 'Gestion des utilisateurs',
@@ -879,6 +884,11 @@ export const translations = {
       password_error: 'تعذر تغيير كلمة المرور.',
       error_match: 'كلمتا المرور غير متطابقتين.',
       error_length: 'يجب أن تحتوي كلمة المرور على 8 أحرف على الأقل.',
+      preferences: 'التفضيلات',
+      language: 'اللغة',
+      theme: 'المظهر',
+      theme_dark: 'داكن',
+      theme_light: 'فاتح',
     },
     users: {
       title: 'إدارة المستخدمين',

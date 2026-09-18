@@ -1,26 +1,38 @@
-import { useState, useRef } from 'react'
-import { Camera, User, Lock, CheckCircle, AlertCircle } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Camera, User, Lock, CheckCircle, AlertCircle, Sun, Moon, Globe } from 'lucide-react'
 import { AdminLayout } from './AdminLayout'
 import { useI18n } from '../../context/LanguageContext'
+import { useThemeCtx } from '../../context/ThemeContext'
 import { useStaffAuth } from '../../hooks/useStaffAuth'
 import { supabase } from '../../lib/supabase'
 
 type Section = 'profile' | 'security'
 
 export function AdminAccountPage() {
-  const { t } = useI18n()
+  const { t, lang, setLang } = useI18n()
+  const { isDark, toggleTheme } = useThemeCtx()
   const { profile, updateProfile, refetchProfile } = useStaffAuth()
 
   const [section, setSection] = useState<Section>('profile')
 
-  // Profile form
-  const [firstName, setFirstName] = useState(profile?.first_name ?? '')
-  const [lastName, setLastName]   = useState(profile?.last_name ?? '')
+  // Profile form — initialized once when profile loads (async)
+  const initialized = useRef(false)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName]   = useState('')
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(profile?.avatar_url ?? null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [savingProfile, setSavingProfile] = useState(false)
   const [profileMsg, setProfileMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (profile && !initialized.current) {
+      initialized.current = true
+      setFirstName(profile.first_name ?? '')
+      setLastName(profile.last_name ?? '')
+      setAvatarPreview(profile.avatar_url ?? null)
+    }
+  }, [profile])
 
   // Security form
   const [newPwd, setNewPwd]     = useState('')
@@ -131,7 +143,7 @@ export function AdminAccountPage() {
           </button>
         </div>
 
-        <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border p-6">
+        <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border p-6 space-y-6">
 
           {/* Section Profil */}
           {section === 'profile' && (
@@ -210,6 +222,48 @@ export function AdminAccountPage() {
               </button>
             </form>
           )}
+
+          {/* Section Préférences — toujours visible */}
+          <div className="border-t border-gray-100 dark:border-dark-border pt-6">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+              <Globe className="w-4 h-4" />{t('account.preferences')}
+            </h3>
+            <div className="space-y-4">
+              {/* Langue */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600 dark:text-gray-400">{t('account.language')}</span>
+                <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-xl p-0.5">
+                  {(['fr', 'ar'] as const).map(l => (
+                    <button
+                      key={l}
+                      onClick={() => setLang(l)}
+                      className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${lang === l ? 'bg-white dark:bg-dark-card text-blue-700 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+                    >
+                      {l === 'fr' ? 'Français' : 'العربية'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Thème */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600 dark:text-gray-400">{t('account.theme')}</span>
+                <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-xl p-0.5">
+                  <button
+                    onClick={() => { if (isDark) toggleTheme() }}
+                    className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${!isDark ? 'bg-white dark:bg-dark-card text-amber-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+                  >
+                    <Sun className="w-3.5 h-3.5" />{t('account.theme_light')}
+                  </button>
+                  <button
+                    onClick={() => { if (!isDark) toggleTheme() }}
+                    className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${isDark ? 'bg-dark-card text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    <Moon className="w-3.5 h-3.5" />{t('account.theme_dark')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* Section Sécurité */}
           {section === 'security' && (
