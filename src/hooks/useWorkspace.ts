@@ -120,13 +120,14 @@ export function useWorkspace(agentId: string | null) {
 
   // Filet de sécurité : relance la distribution périodiquement, en complément du
   // déclenchement réactif ci-dessus (Realtime) et du cron serveur, au cas où l'un
-  // des deux manquerait un événement.
+  // des deux manquerait un événement. Court intervalle pour garder la notification
+  // sous ~2s même si le relais Realtime est raté.
   useEffect(() => {
     if (!agentId) return
     supabase.rpc('route_interactions')
     const interval = setInterval(() => {
       supabase.rpc('route_interactions')
-    }, 5000)
+    }, 2000)
     return () => clearInterval(interval)
   }, [agentId])
 

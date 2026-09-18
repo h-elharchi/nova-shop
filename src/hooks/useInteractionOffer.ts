@@ -65,6 +65,14 @@ export function useInteractionOffer(agentId: string | null) {
     }
   }, [agentId, refreshOffer])
 
+  // Filet de sécurité indépendant du Realtime : garantit que la carte/sonnerie
+  // apparaît sous ~2s même si l'événement postgres_changes est raté ou retardé.
+  useEffect(() => {
+    if (!agentId) return
+    const interval = setInterval(refreshOffer, 2000)
+    return () => clearInterval(interval)
+  }, [agentId, refreshOffer])
+
   const acceptOffer = useCallback(async (): Promise<boolean> => {
     if (!offeredInteraction) return false
     const { error } = await supabase.rpc('accept_interaction_offer', {

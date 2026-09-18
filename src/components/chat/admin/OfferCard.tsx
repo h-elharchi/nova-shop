@@ -1,7 +1,19 @@
 import { useState, useEffect } from 'react'
-import { MessageSquare } from 'lucide-react'
+import { MessageSquare, Mail, Phone } from 'lucide-react'
 import { useI18n } from '../../../context/LanguageContext'
-import type { InteractionWithDetails } from '../../../types/interactions'
+import type { InteractionWithDetails, InteractionChannel } from '../../../types/interactions'
+
+const CHANNEL_ICON: Record<InteractionChannel, typeof MessageSquare> = {
+  chat: MessageSquare,
+  email: Mail,
+  callback: Phone,
+}
+
+const CHANNEL_COLOR: Record<InteractionChannel, string> = {
+  chat: 'text-blue-600 dark:text-blue-400',
+  email: 'text-purple-600 dark:text-purple-400',
+  callback: 'text-orange-600 dark:text-orange-400',
+}
 
 // Notification globale (montée dans AgentProvider) — visible sur n'importe quelle
 // page admin, pas seulement le Workspace, pour que l'agent ne rate jamais une offre.
@@ -26,12 +38,14 @@ export function OfferCard({ interaction, onAccept, onReject }: {
     return () => clearInterval(id)
   }, [interaction.offer_expires_at])
 
+  const Icon = CHANNEL_ICON[interaction.channel]
+
   return (
     <div className="fixed top-16 inset-x-3 md:inset-x-auto md:top-4 md:right-4 z-50 md:w-80 bg-white dark:bg-dark-card rounded-2xl shadow-2xl border-2 border-blue-500 dark:border-blue-400 p-4 animate-pulse-once">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
-          <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-          <span>Nouvelle interaction</span>
+          <Icon className={`w-4 h-4 ${CHANNEL_COLOR[interaction.channel]}`} />
+          <span>{t('interactions.offer_title')}</span>
         </div>
         <span className="text-sm font-bold text-orange-500">{secsLeft}s</span>
       </div>

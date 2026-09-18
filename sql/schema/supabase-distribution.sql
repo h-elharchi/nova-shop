@@ -67,18 +67,15 @@ DECLARE
   v_cap           RECORD;
   v_active_count  INT;
 BEGIN
-  -- Lire les paramètres de distribution
+  -- Lire les paramètres de distribution (offre + sonnerie, ou assignation directe)
   SELECT COALESCE(REPLACE(value::text, '"', ''), 'offer') INTO v_chat_mode
   FROM crc_settings WHERE key = 'chat_distribution_mode';
 
-  SELECT COALESCE(REPLACE(value::text, '"', ''), 'direct') INTO v_email_mode
+  SELECT COALESCE(REPLACE(value::text, '"', ''), 'offer') INTO v_email_mode
   FROM crc_settings WHERE key = 'email_distribution_mode';
 
-  SELECT COALESCE(REPLACE(value::text, '"', ''), 'direct') INTO v_callback_mode
+  SELECT COALESCE(REPLACE(value::text, '"', ''), 'offer') INTO v_callback_mode
   FROM crc_settings WHERE key = 'callback_distribution_mode';
-
-  SELECT COALESCE((value::text)::int, 20) INTO v_offer_delay
-  FROM crc_settings WHERE key = 'chat_accept_delay_seconds';
 
   -- 1. Libérer les propositions expirées → retour en file
   UPDATE interactions
@@ -125,8 +122,21 @@ BEGIN
       CONTINUE; -- Pas d'agent dispo, on passe à la suivante
     END IF;
 
-    -- Appliquer selon le mode du canal
-    IF v_interaction.channel = 'chat' AND v_chat_mode = 'offer' THEN
+    -- Appliquer selon le mode du canal (offre + sonnerie, généralisé aux 3 canaux)
+    IF (v_interaction.channel = 'chat'     AND v_chat_mode     = 'offer')
+    OR (v_interaction.channel = 'email'    AND v_email_mode    = 'offer')
+    OR (v_interaction.channel = 'callback' AND v_callback_mode = 'offer')
+    THEN
+      SELECT COALESCE((value::text)::int, 20) INTO v_offer_delay
+      FROM crc_settings WHERE key = (
+        CASE v_interaction.channel
+          WHEN 'chat'     THEN 'chat_accept_delay_seconds'
+          WHEN 'email'    THEN 'email_accept_delay_seconds'
+          WHEN 'callback' THEN 'callback_accept_delay_seconds'
+        END
+      );
+      v_offer_delay := COALESCE(v_offer_delay, 20);
+
       UPDATE interactions SET
         status = 'offered',
         offered_to = v_agent.user_id,
