@@ -318,16 +318,17 @@ GRANT EXECUTE ON FUNCTION check_customer_duplicate TO authenticated;
 -- par l'agent via l'écran de comparaison côté frontend — pas de décision
 -- automatique ici.
 CREATE OR REPLACE FUNCTION merge_customers(
-  p_keep_id        UUID,
-  p_merge_id       UUID,
-  p_first_name     TEXT,
-  p_last_name      TEXT,
-  p_phone          TEXT DEFAULT NULL,
-  p_phone2         TEXT DEFAULT NULL,
-  p_email          TEXT DEFAULT NULL,
-  p_email2         TEXT DEFAULT NULL,
-  p_whatsapp_phone TEXT DEFAULT NULL,
-  p_notes          TEXT DEFAULT NULL
+  p_keep_id             UUID,
+  p_merge_id            UUID,
+  p_first_name          TEXT,
+  p_last_name           TEXT,
+  p_phone               TEXT DEFAULT NULL,
+  p_phone2              TEXT DEFAULT NULL,
+  p_email               TEXT DEFAULT NULL,
+  p_email2              TEXT DEFAULT NULL,
+  p_whatsapp_phone      TEXT DEFAULT NULL,
+  p_notes               TEXT DEFAULT NULL,
+  p_default_address_id  UUID DEFAULT NULL
 )
 RETURNS VOID
 LANGUAGE plpgsql
@@ -336,6 +337,7 @@ AS $$
 DECLARE
   v_keep  customers%ROWTYPE;
   v_merge customers%ROWTYPE;
+  v_keep_default_address_id UUID;
 BEGIN
   IF NOT is_staff() THEN RAISE EXCEPTION 'permission denied'; END IF;
   IF p_keep_id = p_merge_id THEN RAISE EXCEPTION 'cannot merge a customer into itself'; END IF;
@@ -354,6 +356,12 @@ BEGIN
   END IF;
   IF NULLIF(TRIM(p_phone), '') IS NULL AND NULLIF(TRIM(p_email), '') IS NULL THEN
     RAISE EXCEPTION 'phone or email required';
+  END IF;
+  IF p_default_address_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM customer_addresses
+    WHERE id = p_default_address_id AND customer_id IN (p_keep_id, p_merge_id)
+  ) THEN
+    RAISE EXCEPTION 'default_address_id does not belong to either customer';
   END IF;
 
   -- Marquer le client fusionné et libérer son téléphone AVANT de l'assigner
@@ -380,11 +388,35 @@ BEGIN
     updated_at     = now()
   WHERE id = p_keep_id;
 
+  SELECT id INTO v_keep_default_address_id
+  FROM customer_addresses WHERE customer_id = p_keep_id AND is_default = true LIMIT 1;
+
   UPDATE orders             SET customer_id = p_keep_id WHERE customer_id = p_merge_id;
   UPDATE interactions       SET customer_id = p_keep_id WHERE customer_id = p_merge_id;
   UPDATE email_messages     SET customer_id = p_keep_id WHERE customer_id = p_merge_id;
   UPDATE callback_requests  SET customer_id = p_keep_id WHERE customer_id = p_merge_id;
   UPDATE customer_addresses SET customer_id = p_keep_id WHERE customer_id = p_merge_id;
+
+  IF p_default_address_id IS NOT NULL THEN
+    -- Choix explicite de l'agent
+    UPDATE customer_addresses
+    SET is_default = (id = p_default_address_id)
+    WHERE customer_id = p_keep_id;
+  ELSE
+    -- Pas de choix : garantir au plus une adresse par défaut malgré tout
+    -- (le trigger single_default_address ne réagit pas à un changement de
+    -- customer_id, seulement à is_default).
+    UPDATE customer_addresses
+    SET is_default = false
+    WHERE customer_id = p_keep_id
+      AND is_default = true
+      AND id != COALESCE(
+        v_keep_default_address_id,
+        (SELECT id FROM customer_addresses
+         WHERE customer_id = p_keep_id AND is_default = true
+         ORDER BY updated_at DESC LIMIT 1)
+      );
+  END IF;
 
   INSERT INTO admin_audit_log (actor_id, action, target_type, target_id, customer_number, reason)
   VALUES (
@@ -395,7 +427,7 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION merge_customers(
-  UUID, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT
+  UUID, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, UUID
 ) TO authenticated;
 
 -- ─── RPC : historique des modifications client ────────────────

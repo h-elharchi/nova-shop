@@ -183,19 +183,21 @@ export function useCustomers(filters: CustomerFilters = {}) {
       email2: string | null
       whatsappPhone: string | null
       notes: string | null
+      defaultAddressId?: string | null
     },
   ): Promise<{ ok: boolean; error: string | null }> => {
     const { error: err } = await supabase.rpc('merge_customers', {
-      p_keep_id:        keepId,
-      p_merge_id:       mergeId,
-      p_first_name:     fields.firstName,
-      p_last_name:      fields.lastName,
-      p_phone:          fields.phone,
-      p_phone2:         fields.phone2,
-      p_email:          fields.email,
-      p_email2:         fields.email2,
-      p_whatsapp_phone: fields.whatsappPhone,
-      p_notes:          fields.notes,
+      p_keep_id:            keepId,
+      p_merge_id:           mergeId,
+      p_first_name:         fields.firstName,
+      p_last_name:          fields.lastName,
+      p_phone:              fields.phone,
+      p_phone2:             fields.phone2,
+      p_email:              fields.email,
+      p_email2:             fields.email2,
+      p_whatsapp_phone:     fields.whatsappPhone,
+      p_notes:              fields.notes,
+      p_default_address_id: fields.defaultAddressId ?? null,
     })
     if (!err) await fetch()
     return { ok: !err, error: err?.message ?? null }

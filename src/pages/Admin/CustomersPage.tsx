@@ -119,6 +119,7 @@ export interface MergeFieldValues {
   email2: string | null
   whatsappPhone: string | null
   notes: string | null
+  defaultAddressId?: string | null
 }
 
 function candidates(...values: (string | null | undefined)[]): string[] {
@@ -157,6 +158,33 @@ function FieldChoice({ label, options, value, onChange }: {
   )
 }
 
+function AddressChoice({ addresses, value, onChange, label }: {
+  addresses: CustomerAddress[]
+  value: string | null
+  onChange: (id: string) => void
+  label: string
+}) {
+  if (addresses.length === 0) return null
+  return (
+    <div>
+      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</p>
+      <div className="space-y-1.5">
+        {addresses.map(a => (
+          <button key={a.id} type="button" onClick={() => onChange(a.id)}
+            className={`w-full text-left px-2.5 py-2 rounded-lg border text-xs transition-colors ${
+              value === a.id
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+                : 'border-gray-200 dark:border-dark-border text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-500'
+            }`}>
+            <span className="font-medium">{a.label}</span>
+            {' — '}{[a.city, a.district, a.address, a.landmark].filter(Boolean).join(' · ') || '—'}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function MergeModal({ customer, onConfirm, onClose, t, error }: {
   customer: CustomerView
   onConfirm: (targetId: string, fields: MergeFieldValues) => void
@@ -169,6 +197,7 @@ function MergeModal({ customer, onConfirm, onClose, t, error }: {
   const [searching, setSearching] = useState(false)
   const [selected, setSelected] = useState<CustomerView | null>(null)
   const [fields, setFields] = useState<MergeFieldValues | null>(null)
+  const [addresses, setAddresses] = useState<CustomerAddress[]>([])
 
   useEffect(() => {
     if (query.trim().length < 2) { setResults([]); return }
@@ -188,7 +217,7 @@ function MergeModal({ customer, onConfirm, onClose, t, error }: {
     return () => clearTimeout(timeout)
   }, [query, customer.id])
 
-  function selectDuplicate(r: CustomerView) {
+  async function selectDuplicate(r: CustomerView) {
     setSelected(r)
     setFields({
       firstName:     customer.first_name || r.first_name,
@@ -199,12 +228,23 @@ function MergeModal({ customer, onConfirm, onClose, t, error }: {
       email2:        customer.email2 ?? r.email2 ?? null,
       whatsappPhone: customer.whatsapp_phone ?? r.whatsapp_phone ?? null,
       notes:         [customer.notes, r.notes].filter(Boolean).join('\n') || null,
+      defaultAddressId: null,
     })
+    const { data } = await supabase
+      .from('customer_addresses')
+      .select('*')
+      .in('customer_id', [customer.id, r.id])
+      .order('is_default', { ascending: false })
+    const addrs = (data ?? []) as CustomerAddress[]
+    setAddresses(addrs)
+    const def = addrs.find(a => a.is_default) ?? addrs[0] ?? null
+    setFields(f => f && { ...f, defaultAddressId: def?.id ?? null })
   }
 
   function back() {
     setSelected(null)
     setFields(null)
+    setAddresses([])
   }
 
   return (
@@ -270,6 +310,11 @@ function MergeModal({ customer, onConfirm, onClose, t, error }: {
                 options={candidates(customer.whatsapp_phone, selected.whatsapp_phone)}
                 value={fields.whatsappPhone}
                 onChange={v => setFields(f => f && { ...f, whatsappPhone: v })} />
+              <AddressChoice
+                label={t('customers_v2.merge_default_address')}
+                addresses={addresses}
+                value={fields.defaultAddressId ?? null}
+                onChange={id => setFields(f => f && { ...f, defaultAddressId: id })} />
               <div>
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('customers.notes_label')}</p>
                 <textarea
