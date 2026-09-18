@@ -25,6 +25,17 @@ export function useChatPresence(adminId: string | null) {
     if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null }
   }, [])
 
+  // Démarre (ou redémarre) le battement toutes les HEARTBEAT_MS pour maintenir
+  // last_seen_at frais — sans ça route_interactions() ignore l'agent après 2 min.
+  const restartHeartbeat = useCallback((status: ChatAgentStatus) => {
+    stopHeartbeat()
+    if (status !== 'offline') {
+      heartbeatRef.current = setInterval(() => {
+        if (mounted.current) updateAgentHeartbeat()
+      }, HEARTBEAT_MS)
+    }
+  }, [stopHeartbeat])
+
   const stopDuration = useCallback(() => {
     if (durationRef.current) { clearInterval(durationRef.current); durationRef.current = null }
   }, [])
@@ -83,6 +94,10 @@ export function useChatPresence(adminId: string | null) {
           setMyActiveCount(mine.active_conversations_count ?? 0)
           const ts = mine.status_changed_at ? new Date(mine.status_changed_at).getTime() : undefined
           startDurationTimer(ts)
+          // Reprendre le battement immédiatement si l'agent était déjà en ligne
+          // (ex. rechargement de page) — sinon last_seen_at ne se rafraîchit plus jamais.
+          if (mine.status !== 'offline') updateAgentHeartbeat()
+          restartHeartbeat(mine.status)
         }
       })
 
@@ -122,7 +137,7 @@ export function useChatPresence(adminId: string | null) {
       cancelled = true
       removeChannels()
     }
-  }, [adminId, loadWaitingCount, removeChannels, startDurationTimer])
+  }, [adminId, loadWaitingCount, removeChannels, startDurationTimer, restartHeartbeat])
 
   const setStatus = useCallback(async (status: ChatAgentStatus, pauseReasonId?: string | null) => {
     if (!adminId) return
@@ -130,14 +145,8 @@ export function useChatPresence(adminId: string | null) {
     setMyPauseReasonId(pauseReasonId ?? null)
     startDurationTimer()
     await updateAgentHeartbeat(status, pauseReasonId)
-
-    stopHeartbeat()
-    if (status !== 'offline') {
-      heartbeatRef.current = setInterval(() => {
-        if (mounted.current) updateAgentHeartbeat()
-      }, HEARTBEAT_MS)
-    }
-  }, [adminId, stopHeartbeat, startDurationTimer])
+    restartHeartbeat(status)
+  }, [adminId, restartHeartbeat, startDurationTimer])
 
   // Ref toujours à jour, pour éviter de dépendre de myStatus dans l'effet ci-dessous
   // (une dépendance sur myStatus ferait tourner le cleanup — donc passer offline —
