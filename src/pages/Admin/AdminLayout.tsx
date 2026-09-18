@@ -29,7 +29,7 @@ const ICONS: Record<string, React.ReactNode> = {
 }
 
 export function AdminLayout({ children }: AdminLayoutProps) {
-  const { t } = useI18n()
+  const { t, isRTL } = useI18n()
   const { isDark, toggleTheme } = useThemeCtx()
   const { signOut, user, profile, isAdmin } = useStaffAuth()
   const navigate = useNavigate()
@@ -214,7 +214,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-dark-bg flex transition-colors duration-200">
       {/* Sidebar desktop */}
-      <aside className={`hidden md:flex flex-col ${sidebarWidth} bg-white dark:bg-dark-surface border-r border-gray-100 dark:border-dark-border fixed inset-y-0 transition-all duration-200`}>
+      <aside className={`hidden md:flex flex-col ${sidebarWidth} bg-white dark:bg-dark-surface ${isRTL ? 'border-l' : 'border-r'} border-gray-100 dark:border-dark-border fixed inset-y-0 ${isRTL ? 'right-0' : 'left-0'} transition-all duration-200`}>
         {SidebarContent({})}
       </aside>
 
@@ -229,7 +229,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       )}
 
       {/* Contenu principal */}
-      <div className={`flex-1 ${compact ? 'md:ml-16' : 'md:ml-64'} transition-all duration-200`}>
+      <div className={`flex-1 ${compact ? (isRTL ? 'md:mr-16' : 'md:ml-16') : (isRTL ? 'md:mr-64' : 'md:ml-64')} transition-all duration-200`}>
         {/* Header mobile */}
         <header className="md:hidden bg-white dark:bg-dark-surface border-b border-gray-100 dark:border-dark-border px-4 py-3 flex items-center gap-3 transition-colors duration-200">
           <button
