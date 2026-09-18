@@ -755,7 +755,11 @@ function PurgeSection() {
       setResult(counts)
       setSelected(EMPTY_PURGE_SELECTION)
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('settings.purge_error'))
+      // Les erreurs Postgrest/RPC sont des objets simples { message, code, ... },
+      // pas des instances de Error — extraire .message directement plutôt que
+      // de dépendre de `instanceof Error`, sinon le message réel est masqué.
+      const message = (err as { message?: string } | null)?.message
+      setError(message || t('settings.purge_error'))
     } finally {
       setRunning(false)
       setShowConfirm(false)
