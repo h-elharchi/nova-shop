@@ -51,3 +51,9 @@ export async function resetStaffPassword(email: string): Promise<void> {
 export async function deleteStaffUser(userId: string): Promise<void> {
   await call('delete', { user_id: userId })
 }
+
+// Purge en masse (Paramètres → Purge). Le compte de l'appelant est toujours
+// exclu côté serveur, même si son rôle correspond au filtre demandé.
+export async function purgeStaffUsers(role: StaffRole, retentionDays: number): Promise<{ deleted: number }> {
+  return call('purge', { role, retention_days: retentionDays }) as Promise<{ deleted: number }>
+}

@@ -187,6 +187,40 @@ Deno.serve(async (req: Request) => {
       return json({ data: { success: true } })
     }
 
+    // Purge en masse (Paramètres → Purge). Toujours exclure le compte de
+    // l'appelant, même s'il correspond au rôle purgé (ex. purge des admins).
+    if (action === 'purge') {
+      const role = body.role as string | undefined
+      const retentionDays = Number(body.retention_days)
+
+      if (!['admin', 'agent'].includes(role ?? '')) {
+        return json({ error: 'role must be admin or agent' }, 400)
+      }
+      if (!Number.isFinite(retentionDays) || retentionDays < 0) {
+        return json({ error: 'retention_days must be >= 0' }, 400)
+      }
+
+      const cutoff = new Date(Date.now() - retentionDays * 86400000).toISOString()
+
+      const { data: targets, error: listErr } = await adminClient
+        .from('profiles')
+        .select('id')
+        .eq('role', role)
+        .lt('created_at', cutoff)
+        .neq('id', caller.id)
+
+      if (listErr) throw listErr
+
+      let deleted = 0
+      for (const target of (targets ?? []) as { id: string }[]) {
+        const { error: delErr } = await adminClient.auth.admin.deleteUser(target.id)
+        if (!delErr) deleted++
+      }
+
+      await audit('purge_users', null, { role, retention_days: retentionDays, deleted })
+      return json({ data: { deleted } })
+    }
+
     return json({ error: `Unknown action: ${action}` }, 400)
 
   } catch (err: unknown) {

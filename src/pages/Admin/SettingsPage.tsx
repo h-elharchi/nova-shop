@@ -3,19 +3,20 @@ import { useParams, useNavigate, NavLink } from 'react-router-dom'
 import {
   Store, Mail, Sliders, PauseCircle, CheckSquare, MessageSquare,
   ShoppingBag, UserCheck, Bell, Plus, Trash2, Save,
-  RefreshCw, CheckCircle, AlertCircle,
+  RefreshCw, CheckCircle, AlertCircle, AlertTriangle,
 } from 'lucide-react'
 import { AdminLayout } from './AdminLayout'
 import { useI18n } from '../../context/LanguageContext'
 import { supabase } from '../../lib/supabase'
 import { useEmailAccounts } from '../../hooks/useEmailAccounts'
 import { loadPauseReasons, loadDispositionCodes, loadQuickReplies } from '../../lib/chat'
+import { purgeStaffUsers } from '../../lib/adminUsers'
 import type { CrcPauseReason, CrcDispositionCode, CrcQuickReply } from '../../types/chat'
 
 // ─── Sections configuration ───────────────────────────────────
 
 type SectionKey = 'general' | 'email' | 'distribution' | 'pause' | 'qualification'
-  | 'quick_replies' | 'orders' | 'customers' | 'notifications'
+  | 'quick_replies' | 'orders' | 'customers' | 'notifications' | 'purge'
 
 interface Section {
   key: SectionKey
@@ -33,6 +34,7 @@ const SECTIONS: Section[] = [
   { key: 'orders',       labelKey: 'settings.orders',       icon: <ShoppingBag  className="w-4 h-4" /> },
   { key: 'customers',    labelKey: 'settings.customers',    icon: <UserCheck    className="w-4 h-4" /> },
   { key: 'notifications',labelKey: 'settings.notifications',icon: <Bell         className="w-4 h-4" /> },
+  { key: 'purge',        labelKey: 'settings.purge',        icon: <Trash2       className="w-4 h-4" /> },
 ]
 
 // ─── Shared UI helpers ────────────────────────────────────────
@@ -691,6 +693,168 @@ function NotificationsSection() {
   )
 }
 
+// ─── Section : Purge ──────────────────────────────────────────
+
+type PurgeCategory = 'history' | 'active' | 'customers' | 'orders' | 'products' | 'agents' | 'admins'
+
+const PURGE_CATEGORIES: { key: PurgeCategory; labelKey: string }[] = [
+  { key: 'history',   labelKey: 'settings.purge_cat_history' },
+  { key: 'active',    labelKey: 'settings.purge_cat_active' },
+  { key: 'customers', labelKey: 'settings.purge_cat_customers' },
+  { key: 'orders',    labelKey: 'settings.purge_cat_orders' },
+  { key: 'products',  labelKey: 'settings.purge_cat_products' },
+  { key: 'agents',    labelKey: 'settings.purge_cat_agents' },
+  { key: 'admins',    labelKey: 'settings.purge_cat_admins' },
+]
+
+const EMPTY_PURGE_SELECTION: Record<PurgeCategory, boolean> = {
+  history: false, active: false, customers: false, orders: false, products: false, agents: false, admins: false,
+}
+
+function PurgeSection() {
+  const { t } = useI18n()
+  const [retentionDays, setRetentionDays] = useState(90)
+  const [selected, setSelected] = useState<Record<PurgeCategory, boolean>>(EMPTY_PURGE_SELECTION)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [confirmChecked, setConfirmChecked] = useState(false)
+  const [running, setRunning] = useState(false)
+  const [result, setResult] = useState<Record<string, number> | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const anySelected = Object.values(selected).some(Boolean)
+
+  function toggle(key: PurgeCategory) {
+    setResult(null)
+    setSelected(s => ({ ...s, [key]: !s[key] }))
+  }
+
+  async function handlePurge() {
+    setRunning(true); setError(null)
+    const counts: Record<string, number> = {}
+    try {
+      if (selected.history || selected.active || selected.customers || selected.orders || selected.products) {
+        const { data, error: err } = await supabase.rpc('purge_data', {
+          p_retention_days:  retentionDays,
+          p_purge_history:   selected.history,
+          p_purge_active:    selected.active,
+          p_purge_customers: selected.customers,
+          p_purge_orders:    selected.orders,
+          p_purge_products:  selected.products,
+        })
+        if (err) throw err
+        Object.assign(counts, data as Record<string, number>)
+      }
+      if (selected.agents) {
+        const { deleted } = await purgeStaffUsers('agent', retentionDays)
+        counts.agents = deleted
+      }
+      if (selected.admins) {
+        const { deleted } = await purgeStaffUsers('admin', retentionDays)
+        counts.admins = deleted
+      }
+      setResult(counts)
+      setSelected(EMPTY_PURGE_SELECTION)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('settings.purge_error'))
+    } finally {
+      setRunning(false)
+      setShowConfirm(false)
+      setConfirmChecked(false)
+    }
+  }
+
+  return (
+    <div className="space-y-5 max-w-lg">
+      <div>
+        <h2 className="font-semibold text-gray-900 dark:text-white text-base">{t('settings.purge')}</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('settings.purge_hint')}</p>
+      </div>
+
+      <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border p-4 space-y-4">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">{t('settings.purge_retention')}</label>
+          <div className="flex items-center gap-2">
+            <input type="number" min={0} value={retentionDays}
+              onChange={e => setRetentionDays(Math.max(0, Number(e.target.value)))}
+              className="w-28 border border-gray-200 dark:border-gray-600 bg-white dark:bg-dark-surface text-gray-900 dark:text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <span className="text-sm text-gray-500 dark:text-gray-400">{t('settings.purge_days')}</span>
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{t('settings.purge_retention_hint')}</p>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-gray-600 dark:text-gray-300">{t('settings.purge_categories')}</p>
+          {PURGE_CATEGORIES.map(c => (
+            <label key={c.key} className="flex items-center justify-between gap-4 px-3 py-2.5 rounded-xl border border-gray-100 dark:border-dark-border cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30">
+              <span className="text-sm text-gray-700 dark:text-gray-300">{t(c.labelKey as Parameters<typeof t>[0])}</span>
+              <Toggle checked={selected[c.key]} onChange={() => toggle(c.key)} />
+            </label>
+          ))}
+          {selected.admins && (
+            <p className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />{t('settings.purge_admins_self_hint')}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {error && <p className="text-sm text-red-500">{error}</p>}
+
+      {result && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/40 rounded-2xl p-4 space-y-1">
+          <p className="text-sm font-medium text-green-700 dark:text-green-400">{t('settings.purge_success')}</p>
+          {Object.entries(result).map(([k, v]) => (
+            <p key={k} className="text-xs text-green-600 dark:text-green-400">{k} : {v}</p>
+          ))}
+        </div>
+      )}
+
+      <button
+        onClick={() => setShowConfirm(true)}
+        disabled={!anySelected}
+        className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-xl transition-colors"
+      >
+        <Trash2 className="w-4 h-4" />
+        {t('settings.purge_btn')}
+      </button>
+
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-dark-card rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
+            <div className="flex items-center gap-2 mb-3 text-red-600 dark:text-red-400">
+              <AlertTriangle className="w-5 h-5" />
+              <h3 className="font-semibold">{t('settings.purge_confirm_title')}</h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+              {t('settings.purge_confirm_body').replace('{days}', String(retentionDays))}
+            </p>
+            <ul className="text-xs text-gray-500 dark:text-gray-400 mb-4 space-y-0.5 list-disc list-inside">
+              {PURGE_CATEGORIES.filter(c => selected[c.key]).map(c => (
+                <li key={c.key}>{t(c.labelKey as Parameters<typeof t>[0])}</li>
+              ))}
+            </ul>
+            <label className="flex items-start gap-2 mb-4 cursor-pointer">
+              <input type="checkbox" checked={confirmChecked} onChange={e => setConfirmChecked(e.target.checked)}
+                className="mt-0.5 w-4 h-4 text-red-600 rounded" />
+              <span className="text-xs text-gray-600 dark:text-gray-400">{t('settings.purge_confirm_checkbox')}</span>
+            </label>
+            <div className="flex gap-2">
+              <button onClick={() => { setShowConfirm(false); setConfirmChecked(false) }}
+                className="flex-1 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 rounded-xl transition-colors">
+                {t('forms.cancel')}
+              </button>
+              <button onClick={handlePurge} disabled={!confirmChecked || running}
+                className="flex-1 py-2.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-xl transition-colors">
+                {running ? '…' : t('settings.purge_confirm_submit')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Section router ───────────────────────────────────────────
 
 function SectionContent({ section }: { section: SectionKey }) {
@@ -704,6 +868,7 @@ function SectionContent({ section }: { section: SectionKey }) {
     case 'orders':        return <OrdersSection />
     case 'customers':     return <CustomersSection />
     case 'notifications': return <NotificationsSection />
+    case 'purge':         return <PurgeSection />
   }
 }
 
