@@ -146,6 +146,9 @@ export function useChatPresence(adminId: string | null) {
     startDurationTimer()
     await updateAgentHeartbeat(status, pauseReasonId)
     restartHeartbeat(status)
+    // Je viens de devenir disponible : tenter la distribution tout de suite
+    // plutôt que d'attendre le prochain tick du cron ou du filet de sécurité.
+    if (status === 'available') supabase.rpc('route_interactions')
   }, [adminId, restartHeartbeat, startDurationTimer])
 
   // Ref toujours à jour, pour éviter de dépendre de myStatus dans l'effet ci-dessous

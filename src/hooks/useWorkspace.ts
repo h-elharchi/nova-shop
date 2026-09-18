@@ -116,8 +116,12 @@ export function useWorkspace(agentId: string | null) {
     if (channelRef.current) supabase.removeChannel(channelRef.current)
     const channel = supabase
       .channel(`workspace-${instanceId.current}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'interactions' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'interactions' }, (payload) => {
         if (mounted.current) refresh()
+        // Nouvelle interaction en file (ou remise en file après refus/expiration/transfert) :
+        // relancer la distribution tout de suite plutôt que d'attendre le prochain tick.
+        const row = payload.new as { status?: string } | null
+        if (row?.status === 'queued') supabase.rpc('route_interactions')
       })
       .subscribe()
     channelRef.current = channel
@@ -126,14 +130,15 @@ export function useWorkspace(agentId: string | null) {
     }
   }, [agentId, refresh])
 
-  // Filet de sécurité : relance la distribution périodiquement même si pg_cron
-  // n'est pas configuré côté Supabase (sinon les interactions restent "queued").
+  // Filet de sécurité : relance la distribution périodiquement, en complément du
+  // déclenchement réactif ci-dessus (Realtime) et du cron serveur, au cas où l'un
+  // des deux manquerait un événement.
   useEffect(() => {
     if (!agentId) return
     supabase.rpc('route_interactions')
     const interval = setInterval(() => {
       supabase.rpc('route_interactions')
-    }, 8000)
+    }, 5000)
     return () => clearInterval(interval)
   }, [agentId])
 
