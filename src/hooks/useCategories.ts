@@ -16,6 +16,7 @@ export function useCategories() {
         .from('categories')
         .select('*')
         .eq('is_active', true)
+        .order('display_order')
         .order('name_fr')
       if (cancelled) return
       if (err) {

@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent, ChangeEvent } from 'react'
-import { PlusCircle, Pencil, Trash2, X } from 'lucide-react'
+import { PlusCircle, Pencil, Trash2, X, ChevronUp, ChevronDown } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useI18n } from '../../context/LanguageContext'
 import { AdminLayout } from './AdminLayout'
@@ -28,15 +28,37 @@ export function AdminCategoriesPage() {
   const [form, setForm] = useState<CategoryForm>(empty)
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [reordering, setReordering] = useState(false)
 
   const fetchCategories = async () => {
     setLoading(true)
-    const { data } = await supabase.from('categories').select('*').order('name_fr')
+    const { data } = await supabase.from('categories').select('*').order('display_order').order('name_fr')
     setCategories(data ?? [])
     setLoading(false)
   }
 
   useEffect(() => { fetchCategories() }, [])
+
+  const moveCategory = async (id: string, direction: 'up' | 'down') => {
+    if (reordering) return
+    const idx = categories.findIndex(c => c.id === id)
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+    if (idx === -1 || targetIdx < 0 || targetIdx >= categories.length) return
+
+    // Renumérote la liste selon l'ordre visuel actuel puis échange les deux positions
+    const reordered = categories.map((c, i) => ({ ...c, display_order: i }))
+    const tmp = reordered[idx].display_order
+    reordered[idx].display_order = reordered[targetIdx].display_order
+    reordered[targetIdx].display_order = tmp
+    reordered.sort((a, b) => a.display_order - b.display_order)
+
+    setCategories(reordered)
+    setReordering(true)
+    await Promise.all(
+      reordered.map(c => supabase.from('categories').update({ display_order: c.display_order }).eq('id', c.id))
+    )
+    setReordering(false)
+  }
 
   const openNew = () => { setEditing(null); setForm(empty); setShowForm(true) }
   const openEdit = (cat: Category) => {
@@ -61,7 +83,7 @@ export function AdminCategoriesPage() {
     if (editing) {
       await supabase.from('categories').update(payload).eq('id', editing.id)
     } else {
-      await supabase.from('categories').insert(payload)
+      await supabase.from('categories').insert({ ...payload, display_order: categories.length })
     }
     setSaving(false)
     setShowForm(false)
@@ -94,6 +116,7 @@ export function AdminCategoriesPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-dark-bg text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                <th className="px-4 py-3 text-left">Ordre</th>
                 <th className="px-4 py-3 text-left">Nom</th>
                 <th className="px-4 py-3 text-left">Slug</th>
                 <th className="px-4 py-3 text-left">Statut</th>
@@ -101,8 +124,30 @@ export function AdminCategoriesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
-              {categories.map(cat => (
+              {categories.map((cat, index) => (
                 <tr key={cat.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => moveCategory(cat.id, 'up')}
+                        disabled={index === 0 || reordering}
+                        title="Monter"
+                        className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                      >
+                        <ChevronUp className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveCategory(cat.id, 'down')}
+                        disabled={index === categories.length - 1 || reordering}
+                        title="Descendre"
+                        className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <div className="font-medium text-sm text-gray-900 dark:text-gray-100">{lang === 'ar' ? cat.name_ar : cat.name_fr}</div>
                     <div className="text-xs text-gray-400 dark:text-gray-500">{lang === 'ar' ? cat.name_fr : cat.name_ar}</div>
