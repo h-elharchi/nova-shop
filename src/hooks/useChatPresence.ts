@@ -139,17 +139,24 @@ export function useChatPresence(adminId: string | null) {
     }
   }, [adminId, stopHeartbeat, startDurationTimer])
 
-  // Aller offline proprement à la fermeture de l'onglet
+  // Ref toujours à jour, pour éviter de dépendre de myStatus dans l'effet ci-dessous
+  // (une dépendance sur myStatus ferait tourner le cleanup — donc passer offline —
+  // à chaque changement de statut, pas seulement à la fermeture réelle de l'onglet)
+  const myStatusRef = useRef<ChatAgentStatus>('offline')
+  useEffect(() => { myStatusRef.current = myStatus }, [myStatus])
+
+  // Aller offline proprement à la fermeture de l'onglet (ou au démontage réel)
   useEffect(() => {
-    const handlePageHide = () => {
-      if (adminId && myStatus !== 'offline') updateAgentHeartbeat('offline')
+    if (!adminId) return
+    const goOffline = () => {
+      if (myStatusRef.current !== 'offline') updateAgentHeartbeat('offline')
     }
-    window.addEventListener('pagehide', handlePageHide)
+    window.addEventListener('pagehide', goOffline)
     return () => {
-      window.removeEventListener('pagehide', handlePageHide)
-      if (adminId && myStatus !== 'offline') updateAgentHeartbeat('offline')
+      window.removeEventListener('pagehide', goOffline)
+      goOffline()
     }
-  }, [adminId, myStatus])
+  }, [adminId])
 
   return {
     myStatus,
