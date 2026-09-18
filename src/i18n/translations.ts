@@ -301,6 +301,8 @@ export const translations = {
       admin_quick_placeholder: 'Écrire... (/ pour réponses rapides)',
       admin_quick_no_results: 'Aucune réponse rapide trouvée.',
       system_transferred: 'Conversation transférée à un autre agent.',
+      system_customer_left: 'Le client a fermé la conversation.',
+      customer_left_notice: 'Le client a quitté la conversation. Vous pouvez la terminer.',
     },
     crc: {
       title: 'Paramètres CRC',
@@ -1089,6 +1091,8 @@ export const translations = {
       admin_quick_placeholder: 'اكتب... (/ للردود السريعة)',
       admin_quick_no_results: 'لم يتم العثور على رد سريع.',
       system_transferred: 'تم تحويل المحادثة إلى وكيل آخر.',
+      system_customer_left: 'أغلق العميل المحادثة.',
+      customer_left_notice: 'غادر العميل المحادثة. يمكنك إنهاءها.',
     },
     crc: {
       title: 'إعدادات CRC',

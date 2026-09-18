@@ -64,6 +64,12 @@ export async function getConversation(id: string): Promise<ChatConversation | nu
   return data as ChatConversation
 }
 
+// Signale au(x) agent(s) que le client a fermé le chat, sans clôturer
+// l'interaction — c'est à l'agent de la qualifier via "Terminer".
+export async function closeConversationByCustomer(conversationId: string): Promise<void> {
+  await supabase.rpc('close_conversation_by_customer', { p_conversation_id: conversationId })
+}
+
 // ── Agents en ligne ───────────────────────────────────────────────────────────
 
 export async function checkAgentsOnline(): Promise<AgentsOnlineStatus> {

@@ -6,7 +6,6 @@ import type { InteractionWithDetails, InteractionChannel, UnifiedWrapUpData } fr
 export function useWorkspace(agentId: string | null) {
   const [activeInteraction, setActiveInteraction] = useState<InteractionWithDetails | null>(null)
   const [myInteractions, setMyInteractions]       = useState<InteractionWithDetails[]>([])
-  const [offeredInteraction, setOfferedInteraction] = useState<InteractionWithDetails | null>(null)
   const [queueCounts, setQueueCounts]             = useState({ chat: 0, email: 0, callback: 0, total: 0 })
   const [loading, setLoading]                     = useState(true)
 
@@ -47,22 +46,12 @@ export function useWorkspace(agentId: string | null) {
   const refreshMine = useCallback(async () => {
     if (!agentId) return
 
-    const [mineRes, offeredRes] = await Promise.all([
-      supabase
-        .from('interactions')
-        .select(`*, customers!customer_id(first_name,last_name,phone,email,customer_number), crc_disposition_codes!disposition_code_id(code,name_fr,name_ar)`)
-        .eq('assigned_agent_id', agentId)
-        .in('status', ['assigned', 'active', 'pending_customer', 'wrap_up'])
-        .order('assigned_at', { ascending: true }),
-      supabase
-        .from('interactions')
-        .select(`*, customers!customer_id(first_name,last_name,phone,email,customer_number)`)
-        .eq('offered_to', agentId)
-        .eq('status', 'offered')
-        .gt('offer_expires_at', new Date().toISOString())
-        .order('offer_expires_at', { ascending: true })
-        .limit(1),
-    ])
+    const mineRes = await supabase
+      .from('interactions')
+      .select(`*, customers!customer_id(first_name,last_name,phone,email,customer_number), crc_disposition_codes!disposition_code_id(code,name_fr,name_ar)`)
+      .eq('assigned_agent_id', agentId)
+      .in('status', ['assigned', 'active', 'pending_customer', 'wrap_up'])
+      .order('assigned_at', { ascending: true })
 
     if (!mounted.current) return
 
@@ -79,7 +68,6 @@ export function useWorkspace(agentId: string | null) {
       return i
     })
     setMyInteractions(mapped)
-    setOfferedInteraction(offeredRes.data?.[0] ? mapRow(offeredRes.data[0] as Record<string, unknown>) : null)
 
     // Mettre à jour l'interaction active si elle est dans la liste
     setActiveInteraction(prev => {
@@ -150,24 +138,6 @@ export function useWorkspace(agentId: string | null) {
     setActiveInteraction(null)
   }, [])
 
-  const acceptOffer = useCallback(async (): Promise<boolean> => {
-    if (!offeredInteraction) return false
-    const { error } = await supabase.rpc('accept_interaction_offer', {
-      p_interaction_id: offeredInteraction.id,
-    })
-    if (!error) await refresh()
-    return !error
-  }, [offeredInteraction, refresh])
-
-  const rejectOffer = useCallback(async (): Promise<boolean> => {
-    if (!offeredInteraction) return false
-    const { error } = await supabase.rpc('reject_interaction_offer', {
-      p_interaction_id: offeredInteraction.id,
-    })
-    if (!error) await refresh()
-    return !error
-  }, [offeredInteraction, refresh])
-
   const startWrapUp = useCallback(async (id: string): Promise<boolean> => {
     const { error } = await supabase.rpc('start_wrap_up', { p_interaction_id: id })
     if (!error) await refresh()
@@ -213,13 +183,10 @@ export function useWorkspace(agentId: string | null) {
   return {
     activeInteraction,
     myInteractions,
-    offeredInteraction,
     queueCounts,
     loading,
     openInteraction,
     closePanel,
-    acceptOffer,
-    rejectOffer,
     startWrapUp,
     closeInteraction,
     transferInteraction,

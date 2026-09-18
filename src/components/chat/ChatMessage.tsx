@@ -20,6 +20,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
     } else if (message.message.startsWith('conversation_transferred:')) {
       const note = message.message.slice('conversation_transferred:'.length)
       text = `${t('chat.system_transferred')}${note ? ` — ${note}` : ''}`
+    } else if (message.message === 'customer_left') {
+      text = t('chat.system_customer_left')
     } else {
       text = message.message
     }

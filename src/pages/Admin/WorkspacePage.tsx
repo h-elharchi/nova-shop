@@ -12,7 +12,6 @@ import { useCallbackDetail } from '../../hooks/useCallbacks'
 import { useChatMessages } from '../../hooks/useChatMessages'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
 import { useNotifications } from '../../hooks/useNotifications'
-import { useRingtone } from '../../hooks/useRingtone'
 import { ChatMessage } from '../../components/chat/ChatMessage'
 import { AdminChatInput } from '../../components/chat/admin/AdminChatInput'
 import { CustomerOrdersPanel } from '../../components/orders/CustomerOrdersPanel'
@@ -178,56 +177,6 @@ function UnifiedWrapUpModal({
   )
 }
 
-// ─── Offer Card ───────────────────────────────────────────────
-
-function OfferCard({ interaction, onAccept, onReject }: {
-  interaction: InteractionWithDetails
-  onAccept: () => void
-  onReject: () => void
-}) {
-  const { t } = useI18n()
-  const [secsLeft, setSecsLeft] = useState<number>(() => {
-    if (!interaction.offer_expires_at) return 20
-    return Math.max(0, Math.floor((new Date(interaction.offer_expires_at).getTime() - Date.now()) / 1000))
-  })
-
-  useEffect(() => {
-    if (!interaction.offer_expires_at) return
-    const id = setInterval(() => {
-      const left = Math.max(0, Math.floor((new Date(interaction.offer_expires_at!).getTime() - Date.now()) / 1000))
-      setSecsLeft(left)
-      if (left === 0) clearInterval(id)
-    }, 1000)
-    return () => clearInterval(id)
-  }, [interaction.offer_expires_at])
-
-  return (
-    <div className="fixed top-16 inset-x-3 md:inset-x-auto md:top-4 md:right-4 z-50 md:w-80 bg-white dark:bg-dark-card rounded-2xl shadow-2xl border-2 border-blue-500 dark:border-blue-400 p-4 animate-pulse-once">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
-          <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-          <span>Nouvelle interaction</span>
-        </div>
-        <span className="text-sm font-bold text-orange-500">{secsLeft}s</span>
-      </div>
-      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-        {interaction.customer_first_name} {interaction.customer_last_name}
-        {interaction.subject && <span className="text-gray-400"> — {interaction.subject}</span>}
-      </p>
-      <div className="flex gap-2">
-        <button onClick={onReject}
-          className="flex-1 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-xl">
-          {t('interactions.offer_reject')}
-        </button>
-        <button onClick={onAccept}
-          className="flex-1 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-xl">
-          {t('interactions.offer_accept')}
-        </button>
-      </div>
-    </div>
-  )
-}
-
 // ─── Interaction list item ────────────────────────────────────
 
 function InteractionItem({ interaction, isActive, onClick }: {
@@ -286,6 +235,10 @@ function ChatPanel({ interaction, agentId, onWrapUp }: {
     await send(text, 'admin', agentId)
   }, [send, agentId])
 
+  // Le client a fermé sa fenêtre de chat : la saisie n'a plus de sens côté agent,
+  // qui doit clôturer via le bouton "Terminer" (déjà visible dans l'en-tête).
+  const customerLeft = messages.some(m => m.sender_type === 'system' && m.message === 'customer_left')
+
   if (loading || !chatConvId) {
     return (
       <div className="flex items-center justify-center flex-1 text-gray-400 text-sm">
@@ -310,6 +263,11 @@ function ChatPanel({ interaction, agentId, onWrapUp }: {
               {t('interactions.wrap_up_title')}
             </button>
           </div>
+        ) : customerLeft ? (
+          <p className="flex items-center gap-1.5 text-xs text-orange-600 dark:text-orange-400 px-1 py-2">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            {t('chat.customer_left_notice')}
+          </p>
         ) : (
           <AdminChatInput
             onSend={handleSend}
@@ -816,8 +774,8 @@ export function WorkspacePage() {
 
   const workspace = useWorkspace(user?.id ?? null)
   const {
-    activeInteraction, myInteractions, offeredInteraction, queueCounts,
-    openInteraction, closePanel, acceptOffer, rejectOffer,
+    activeInteraction, myInteractions, queueCounts,
+    openInteraction, closePanel,
     startWrapUp, closeInteraction, transferInteraction,
   } = workspace
 
@@ -843,7 +801,6 @@ export function WorkspacePage() {
   const [queueLoading, setQueueLoading] = useState(false)
 
   useNotifications(waitingCount, true)
-  useRingtone(!!offeredInteraction)
 
   // Auto-sync emails : au montage + toutes les 5 minutes
   const syncEmails = useCallback(async () => {
@@ -1283,14 +1240,6 @@ export function WorkspacePage() {
       </div>
 
       {/* Modals */}
-      {offeredInteraction && (
-        <OfferCard
-          interaction={offeredInteraction}
-          onAccept={acceptOffer}
-          onReject={rejectOffer}
-        />
-      )}
-
       {showPause && (
         <PauseModal
           onConfirm={(reasonId) => { setStatus('pause', reasonId); setShowPause(false) }}

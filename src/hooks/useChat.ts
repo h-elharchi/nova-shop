@@ -8,6 +8,7 @@ import {
   checkAgentsOnline,
   assignToAvailableAdmin,
   getConversation,
+  closeConversationByCustomer,
 } from '../lib/chat'
 import { validateMoroccanPhone, normalizePhone } from './useOrders'
 import type { ChatConversation, ChatWidgetState } from '../types/chat'
@@ -250,6 +251,11 @@ export function useChat() {
   }, [stopCountdown])
 
   const resetToIdle = useCallback(() => {
+    // Le client ferme le chat : prévenir l'agent (message système), sans clôturer
+    // l'interaction — c'est à lui de la terminer via le wrap-up.
+    if (conversation && (conversation.status === 'waiting' || conversation.status === 'active')) {
+      closeConversationByCustomer(conversation.id)
+    }
     stopCountdown()
     stopWaitingTimer()
     cleanupSubscription()
@@ -260,7 +266,7 @@ export function useChat() {
     setError(null)
     setWidgetState('idle')
     setIsOpen(false)
-  }, [stopCountdown, stopWaitingTimer, cleanupSubscription])
+  }, [conversation, stopCountdown, stopWaitingTimer, cleanupSubscription])
 
   const startNewConversation = useCallback(() => {
     stopCountdown()
