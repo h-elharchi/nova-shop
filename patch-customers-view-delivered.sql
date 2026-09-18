@@ -5,8 +5,13 @@
 -- Ajoute le compte de commandes livrées (status='delivered')
 -- pour identifier les vrais clients.
 -- ============================================================
+-- PostgreSQL interdit de réordonner les colonnes avec CREATE OR REPLACE VIEW.
+-- On droppe d'abord, puis on recrée avec le GRANT.
+-- ============================================================
 
-CREATE OR REPLACE VIEW customers_view AS
+DROP VIEW IF EXISTS customers_view;
+
+CREATE VIEW customers_view AS
 SELECT
   c.*,
   COALESCE(o.order_count,     0)    AS order_count,
