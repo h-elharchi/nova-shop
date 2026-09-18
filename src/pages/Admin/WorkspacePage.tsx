@@ -872,7 +872,7 @@ export function WorkspacePage() {
     setQueueLoading(false)
   }, [channelFilter])
 
-  useEffect(() => { loadQueue() }, [loadQueue])
+  useEffect(() => { loadQueue() }, [loadQueue, queueCounts.chat, queueCounts.email, queueCounts.callback])
 
   const filteredMine = channelFilter === 'all'
     ? myInteractions
