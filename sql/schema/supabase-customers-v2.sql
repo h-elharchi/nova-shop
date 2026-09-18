@@ -313,10 +313,21 @@ GRANT EXECUTE ON FUNCTION check_customer_duplicate TO authenticated;
 
 -- ─── RPC : fusionner deux fiches client suspectées d'être la même personne ───
 -- p_keep_id reste actif ; p_merge_id passe en status='merged' (conservé pour
--- traçabilité, RLS interdit déjà toute modification ultérieure).
+-- traçabilité, RLS interdit déjà toute modification ultérieure). Les champs
+-- de coordonnées (p_first_name..p_notes) sont les valeurs EXACTES choisies
+-- par l'agent via l'écran de comparaison côté frontend — pas de décision
+-- automatique ici.
 CREATE OR REPLACE FUNCTION merge_customers(
-  p_keep_id  UUID,
-  p_merge_id UUID
+  p_keep_id        UUID,
+  p_merge_id       UUID,
+  p_first_name     TEXT,
+  p_last_name      TEXT,
+  p_phone          TEXT DEFAULT NULL,
+  p_phone2         TEXT DEFAULT NULL,
+  p_email          TEXT DEFAULT NULL,
+  p_email2         TEXT DEFAULT NULL,
+  p_whatsapp_phone TEXT DEFAULT NULL,
+  p_notes          TEXT DEFAULT NULL
 )
 RETURNS VOID
 LANGUAGE plpgsql
@@ -338,18 +349,32 @@ BEGIN
   IF v_keep.status = 'merged' OR v_merge.status = 'merged' THEN
     RAISE EXCEPTION 'customer already merged';
   END IF;
+  IF p_first_name IS NULL OR TRIM(p_first_name) = '' THEN
+    RAISE EXCEPTION 'first_name required';
+  END IF;
+  IF NULLIF(TRIM(p_phone), '') IS NULL AND NULLIF(TRIM(p_email), '') IS NULL THEN
+    RAISE EXCEPTION 'phone or email required';
+  END IF;
+
+  -- Marquer le client fusionné et libérer son téléphone AVANT de l'assigner
+  -- au client conservé (contrainte UNIQUE sur phone).
+  UPDATE customers SET
+    status      = 'merged',
+    merged_into = p_keep_id,
+    phone       = NULL,
+    version     = version + 1,
+    updated_at  = now()
+  WHERE id = p_merge_id;
 
   UPDATE customers SET
-    email          = COALESCE(NULLIF(v_keep.email, ''), NULLIF(v_merge.email, '')),
-    email2         = CASE
-                        WHEN v_keep.email IS NOT NULL AND v_keep.email2 IS NULL
-                          THEN NULLIF(v_merge.email, '')
-                        ELSE v_keep.email2
-                      END,
-    phone2         = COALESCE(v_keep.phone2,
-                       CASE WHEN v_merge.phone IS DISTINCT FROM v_keep.phone THEN v_merge.phone END),
-    whatsapp_phone = COALESCE(v_keep.whatsapp_phone, v_merge.whatsapp_phone),
-    notes          = NULLIF(TRIM(BOTH E'\n' FROM CONCAT_WS(E'\n', v_keep.notes, v_merge.notes)), ''),
+    first_name     = TRIM(p_first_name),
+    last_name      = COALESCE(TRIM(p_last_name), ''),
+    phone          = NULLIF(TRIM(p_phone), ''),
+    phone2         = NULLIF(TRIM(p_phone2), ''),
+    email          = NULLIF(TRIM(p_email), ''),
+    email2         = NULLIF(TRIM(p_email2), ''),
+    whatsapp_phone = NULLIF(TRIM(p_whatsapp_phone), ''),
+    notes          = NULLIF(p_notes, ''),
     tags           = (SELECT ARRAY(SELECT DISTINCT unnest(COALESCE(v_keep.tags, '{}') || COALESCE(v_merge.tags, '{}')))),
     version        = v_keep.version + 1,
     updated_at     = now()
@@ -361,13 +386,6 @@ BEGIN
   UPDATE callback_requests  SET customer_id = p_keep_id WHERE customer_id = p_merge_id;
   UPDATE customer_addresses SET customer_id = p_keep_id WHERE customer_id = p_merge_id;
 
-  UPDATE customers SET
-    status      = 'merged',
-    merged_into = p_keep_id,
-    version     = version + 1,
-    updated_at  = now()
-  WHERE id = p_merge_id;
-
   INSERT INTO admin_audit_log (actor_id, action, target_type, target_id, customer_number, reason)
   VALUES (
     auth.uid(), 'merge_customer', 'customer', p_merge_id, v_merge.customer_number,
@@ -376,7 +394,9 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION merge_customers TO authenticated;
+GRANT EXECUTE ON FUNCTION merge_customers(
+  UUID, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT
+) TO authenticated;
 
 -- ─── RPC : historique des modifications client ────────────────
 -- Vue admin_audit_log pour un client donné

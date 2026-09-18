@@ -110,9 +110,56 @@ function DeleteModal({ customer, onConfirm, onClose, t, error }: {
 
 // ─── Modal fusion ─────────────────────────────────────────────
 
+export interface MergeFieldValues {
+  firstName: string
+  lastName: string
+  phone: string | null
+  phone2: string | null
+  email: string | null
+  email2: string | null
+  whatsappPhone: string | null
+  notes: string | null
+}
+
+function candidates(...values: (string | null | undefined)[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const v of values) {
+    const t = v?.trim()
+    if (t && !seen.has(t)) { seen.add(t); out.push(t) }
+  }
+  return out
+}
+
+function FieldChoice({ label, options, value, onChange }: {
+  label: string
+  options: string[]
+  value: string | null
+  onChange: (v: string) => void
+}) {
+  if (options.length === 0) return null
+  return (
+    <div>
+      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map(opt => (
+          <button key={opt} type="button" onClick={() => onChange(opt)}
+            className={`px-2.5 py-1.5 rounded-lg border text-xs transition-colors ${
+              value === opt
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+                : 'border-gray-200 dark:border-dark-border text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-500'
+            }`}>
+            {opt}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function MergeModal({ customer, onConfirm, onClose, t, error }: {
   customer: CustomerView
-  onConfirm: (targetId: string) => void
+  onConfirm: (targetId: string, fields: MergeFieldValues) => void
   onClose: () => void
   t: (k: string) => string
   error?: string | null
@@ -121,6 +168,7 @@ function MergeModal({ customer, onConfirm, onClose, t, error }: {
   const [results, setResults] = useState<CustomerView[]>([])
   const [searching, setSearching] = useState(false)
   const [selected, setSelected] = useState<CustomerView | null>(null)
+  const [fields, setFields] = useState<MergeFieldValues | null>(null)
 
   useEffect(() => {
     if (query.trim().length < 2) { setResults([]); return }
@@ -140,16 +188,35 @@ function MergeModal({ customer, onConfirm, onClose, t, error }: {
     return () => clearTimeout(timeout)
   }, [query, customer.id])
 
+  function selectDuplicate(r: CustomerView) {
+    setSelected(r)
+    setFields({
+      firstName:     customer.first_name || r.first_name,
+      lastName:      customer.last_name || r.last_name,
+      phone:         customer.phone ?? r.phone ?? null,
+      phone2:        customer.phone2 ?? r.phone2 ?? null,
+      email:         customer.email ?? r.email ?? null,
+      email2:        customer.email2 ?? r.email2 ?? null,
+      whatsappPhone: customer.whatsapp_phone ?? r.whatsapp_phone ?? null,
+      notes:         [customer.notes, r.notes].filter(Boolean).join('\n') || null,
+    })
+  }
+
+  function back() {
+    setSelected(null)
+    setFields(null)
+  }
+
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white dark:bg-dark-card rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+      <div className="bg-white dark:bg-dark-card rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4">
         <h3 className="font-bold text-gray-900 dark:text-white">{t('customers_v2.merge_title')}</h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          {t('customers_v2.merge_into').replace('{name}', `${customer.first_name} ${customer.last_name}`)}
-        </p>
 
         {!selected ? (
           <>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              {t('customers_v2.merge_into').replace('{name}', `${customer.first_name} ${customer.last_name}`)}
+            </p>
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
@@ -163,7 +230,7 @@ function MergeModal({ customer, onConfirm, onClose, t, error }: {
                 <p className="text-xs text-gray-400 text-center py-3">{t('common.no_results')}</p>
               )}
               {results.map(r => (
-                <button key={r.id} onClick={() => setSelected(r)}
+                <button key={r.id} onClick={() => selectDuplicate(r)}
                   className="w-full text-left px-3 py-2 rounded-lg border border-gray-100 dark:border-dark-border hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
                   <p className="text-sm font-medium text-gray-900 dark:text-white">{r.first_name} {r.last_name}</p>
                   <p className="text-xs text-gray-400">{r.phone ?? '—'}{r.email ? ` · ${r.email}` : ''}</p>
@@ -171,11 +238,47 @@ function MergeModal({ customer, onConfirm, onClose, t, error }: {
               ))}
             </div>
           </>
-        ) : (
+        ) : fields && (
           <div className="space-y-3">
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
-              <p className="text-sm font-medium text-gray-900 dark:text-white">{selected.first_name} {selected.last_name}</p>
-              <p className="text-xs text-gray-400">{selected.phone ?? '—'}{selected.email ? ` · ${selected.email}` : ''}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{t('customers_v2.merge_compare_hint')}</p>
+            <div className="max-h-[50vh] overflow-y-auto space-y-3 pr-1">
+              <FieldChoice label={t('chat.first_name')}
+                options={candidates(customer.first_name, selected.first_name)}
+                value={fields.firstName}
+                onChange={v => setFields(f => f && { ...f, firstName: v })} />
+              <FieldChoice label={t('chat.last_name')}
+                options={candidates(customer.last_name, selected.last_name)}
+                value={fields.lastName}
+                onChange={v => setFields(f => f && { ...f, lastName: v })} />
+              <FieldChoice label={t('customers.col_phone')}
+                options={candidates(customer.phone, selected.phone)}
+                value={fields.phone}
+                onChange={v => setFields(f => f && { ...f, phone: v })} />
+              <FieldChoice label={t('customers_v2.phone2')}
+                options={candidates(customer.phone2, selected.phone2)}
+                value={fields.phone2}
+                onChange={v => setFields(f => f && { ...f, phone2: v })} />
+              <FieldChoice label={t('customers.col_email')}
+                options={candidates(customer.email, selected.email)}
+                value={fields.email}
+                onChange={v => setFields(f => f && { ...f, email: v })} />
+              <FieldChoice label={t('customers_v2.email2')}
+                options={candidates(customer.email2, selected.email2)}
+                value={fields.email2}
+                onChange={v => setFields(f => f && { ...f, email2: v })} />
+              <FieldChoice label={t('customers_v2.whatsapp')}
+                options={candidates(customer.whatsapp_phone, selected.whatsapp_phone)}
+                value={fields.whatsappPhone}
+                onChange={v => setFields(f => f && { ...f, whatsappPhone: v })} />
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('customers.notes_label')}</p>
+                <textarea
+                  value={fields.notes ?? ''}
+                  onChange={e => setFields(f => f && { ...f, notes: e.target.value })}
+                  rows={3}
+                  className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+              </div>
             </div>
             <p className="flex items-start gap-1.5 text-xs text-orange-600 dark:text-orange-400">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -189,11 +292,15 @@ function MergeModal({ customer, onConfirm, onClose, t, error }: {
         )}
 
         <div className="flex gap-2 justify-end">
-          <button onClick={selected ? () => setSelected(null) : onClose} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:underline">
+          <button onClick={selected ? back : onClose} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:underline">
             {selected ? t('customers_v2.merge_back') : t('common.cancel')}
           </button>
-          {selected && (
-            <button onClick={() => onConfirm(selected.id)} className="px-4 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
+          {selected && fields && (
+            <button
+              onClick={() => onConfirm(selected.id, fields)}
+              disabled={!fields.firstName.trim() || (!fields.phone && !fields.email)}
+              className="px-4 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg"
+            >
               {t('customers_v2.merge_confirm')}
             </button>
           )}
@@ -332,9 +439,9 @@ function CustomerDetailModal({ customer, onClose, onUpdated, t, isAdmin }: Custo
     }
   }
 
-  async function handleMerge(targetId: string) {
+  async function handleMerge(targetId: string, fields: MergeFieldValues) {
     setMergeError(null)
-    const { ok, error: err } = await mergeCustomers(customer.id, targetId)
+    const { ok, error: err } = await mergeCustomers(customer.id, targetId, fields)
     if (ok) {
       setActionMsg(t('customers_v2.merge_success'))
       setTimeout(() => { onUpdated(); onClose() }, 1500)
