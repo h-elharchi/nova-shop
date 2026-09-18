@@ -201,7 +201,7 @@ function OfferCard({ interaction, onAccept, onReject }: {
   }, [interaction.offer_expires_at])
 
   return (
-    <div className="fixed top-4 right-4 z-50 w-80 bg-white dark:bg-dark-card rounded-2xl shadow-2xl border-2 border-blue-500 dark:border-blue-400 p-4 animate-pulse-once">
+    <div className="fixed top-16 inset-x-3 md:inset-x-auto md:top-4 md:right-4 z-50 md:w-80 bg-white dark:bg-dark-card rounded-2xl shadow-2xl border-2 border-blue-500 dark:border-blue-400 p-4 animate-pulse-once">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
           <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -826,6 +826,16 @@ export function WorkspacePage() {
   const [showTransfer, setShowTransfer] = useState(false)
   const [showWrapUp, setShowWrapUp] = useState(false)
   const [emailSyncing, setEmailSyncing] = useState(false)
+  const [mobileView, setMobileView] = useState<'list' | 'panel' | 'client'>('list')
+
+  useEffect(() => {
+    if (!activeInteraction) setMobileView('list')
+  }, [activeInteraction])
+
+  function handleOpenMobile(i: InteractionWithDetails) {
+    openInteraction(i)
+    setMobileView('panel')
+  }
 
   // Queue list
   const [queueList, setQueueList] = useState<InteractionWithDetails[]>([])
@@ -910,77 +920,106 @@ export function WorkspacePage() {
 
   return (
     <AdminLayout>
-      <div className="flex flex-col h-[calc(100vh-5rem)] -m-6 overflow-hidden">
+      <div className="flex flex-col h-[calc(100vh-3rem)] md:h-[calc(100vh-5rem)] -m-6 overflow-hidden">
 
         {/* Top bar */}
-        <div className="shrink-0 bg-white dark:bg-dark-surface border-b border-gray-100 dark:border-dark-border px-4 py-2 flex items-center gap-4 flex-wrap">
-          {/* Agent status */}
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${statusDot[myStatus] ?? 'bg-gray-400'}`} />
-            <span className="text-sm text-gray-700 dark:text-gray-300">
-              {t(`chat.admin_${myStatus}`)}
-            </span>
-            <span className="text-xs text-gray-400">{sDur}</span>
+        <div className="shrink-0 bg-white dark:bg-dark-surface border-b border-gray-100 dark:border-dark-border">
+
+          {/* ── Desktop top bar ── */}
+          <div className="hidden md:flex items-center gap-4 flex-wrap px-4 py-2">
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${statusDot[myStatus] ?? 'bg-gray-400'}`} />
+              <span className="text-sm text-gray-700 dark:text-gray-300">{t(`chat.admin_${myStatus}`)}</span>
+              <span className="text-xs text-gray-400">{sDur}</span>
+            </div>
+            <div className="flex gap-1">
+              {myStatus !== 'available' && (
+                <button onClick={() => setStatus('available')}
+                  className="px-2.5 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/50">
+                  {t('chat.admin_available')}
+                </button>
+              )}
+              {myStatus !== 'pause' && myStatus !== 'offline' && (
+                <button onClick={() => setShowPause(true)}
+                  className="px-2.5 py-1 text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-lg hover:bg-yellow-200">
+                  {t('chat.admin_pause')}
+                </button>
+              )}
+              {myStatus !== 'offline' && (
+                <button onClick={() => setStatus('offline')}
+                  className="px-2.5 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-200">
+                  {t('chat.admin_offline')}
+                </button>
+              )}
+            </div>
+            <div className="flex-1" />
+            <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+              {queueCounts.chat > 0 && <span className="flex items-center gap-1"><MessageSquare className="w-3.5 h-3.5 text-blue-500" />{queueCounts.chat}</span>}
+              {queueCounts.email > 0 && <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5 text-purple-500" />{queueCounts.email}</span>}
+              {queueCounts.callback > 0 && <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-orange-500" />{queueCounts.callback}</span>}
+            </div>
+            <button onClick={syncEmails} disabled={emailSyncing} title={t('email.sync')}
+              className="p-1.5 text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 disabled:opacity-40 transition-colors">
+              <RefreshCw className={`w-3.5 h-3.5 ${emailSyncing ? 'animate-spin' : ''}`} />
+            </button>
+            <button onClick={() => takeNext(channelFilter === 'all' ? undefined : channelFilter)}
+              disabled={queueCounts.total === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl disabled:opacity-40">
+              <Zap className="w-3.5 h-3.5" />{t('workspace.next_btn')}
+            </button>
           </div>
 
-          {/* Status buttons */}
-          <div className="flex gap-1">
-            {myStatus !== 'available' && (
-              <button onClick={() => setStatus('available')}
-                className="px-2.5 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/50">
-                {t('chat.admin_available')}
+          {/* ── Mobile top bar ── */}
+          <div className="flex md:hidden flex-col px-3 py-2 gap-1.5">
+            {/* Row 1 : status + counts + sync + next */}
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${statusDot[myStatus] ?? 'bg-gray-400'}`} />
+              <span className="text-sm text-gray-700 dark:text-gray-300">{t(`chat.admin_${myStatus}`)}</span>
+              <span className="text-xs text-gray-400">{sDur}</span>
+              <div className="flex-1" />
+              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                {queueCounts.chat > 0 && <span className="flex items-center gap-0.5"><MessageSquare className="w-3 h-3 text-blue-500" />{queueCounts.chat}</span>}
+                {queueCounts.email > 0 && <span className="flex items-center gap-0.5"><Mail className="w-3 h-3 text-purple-500" />{queueCounts.email}</span>}
+                {queueCounts.callback > 0 && <span className="flex items-center gap-0.5"><Phone className="w-3 h-3 text-orange-500" />{queueCounts.callback}</span>}
+              </div>
+              <button onClick={syncEmails} disabled={emailSyncing} title={t('email.sync')}
+                className="p-1.5 text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg disabled:opacity-40 transition-colors">
+                <RefreshCw className={`w-3.5 h-3.5 ${emailSyncing ? 'animate-spin' : ''}`} />
               </button>
-            )}
-            {myStatus !== 'pause' && myStatus !== 'offline' && (
-              <button onClick={() => setShowPause(true)}
-                className="px-2.5 py-1 text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-lg hover:bg-yellow-200">
-                {t('chat.admin_pause')}
+              <button onClick={() => takeNext(channelFilter === 'all' ? undefined : channelFilter)}
+                disabled={queueCounts.total === 0}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl disabled:opacity-40">
+                <Zap className="w-3.5 h-3.5" />
+                {t('workspace.next_btn')}
+                {queueCounts.total > 0 && <span className="ml-0.5">({queueCounts.total})</span>}
               </button>
-            )}
-            {myStatus !== 'offline' && (
-              <button onClick={() => setStatus('offline')}
-                className="px-2.5 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-200">
-                {t('chat.admin_offline')}
-              </button>
-            )}
+            </div>
+            {/* Row 2 : status action buttons */}
+            <div className="flex gap-1">
+              {myStatus !== 'available' && (
+                <button onClick={() => setStatus('available')}
+                  className="px-2.5 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-lg">
+                  {t('chat.admin_available')}
+                </button>
+              )}
+              {myStatus !== 'pause' && myStatus !== 'offline' && (
+                <button onClick={() => setShowPause(true)}
+                  className="px-2.5 py-1 text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-lg">
+                  {t('chat.admin_pause')}
+                </button>
+              )}
+              {myStatus !== 'offline' && (
+                <button onClick={() => setStatus('offline')}
+                  className="px-2.5 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-lg">
+                  {t('chat.admin_offline')}
+                </button>
+              )}
+            </div>
           </div>
-
-          <div className="flex-1" />
-
-          {/* Queue counts */}
-          <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-            {queueCounts.chat > 0 && (
-              <span className="flex items-center gap-1"><MessageSquare className="w-3.5 h-3.5 text-blue-500" />{queueCounts.chat}</span>
-            )}
-            {queueCounts.email > 0 && (
-              <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5 text-purple-500" />{queueCounts.email}</span>
-            )}
-            {queueCounts.callback > 0 && (
-              <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-orange-500" />{queueCounts.callback}</span>
-            )}
-          </div>
-
-          {/* Email sync button */}
-          <button
-            onClick={syncEmails}
-            disabled={emailSyncing}
-            title={t('email.sync')}
-            className="p-1.5 text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 disabled:opacity-40 transition-colors"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${emailSyncing ? 'animate-spin' : ''}`} />
-          </button>
-
-          {/* Next button */}
-          <button
-            onClick={() => takeNext(channelFilter === 'all' ? undefined : channelFilter)}
-            disabled={queueCounts.total === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl disabled:opacity-40">
-            <Zap className="w-3.5 h-3.5" />{t('workspace.next_btn')}
-          </button>
         </div>
 
-        {/* Body: 3 columns */}
-        <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Body: 3 columns — desktop only */}
+        <div className="hidden md:flex flex-1 min-h-0 overflow-hidden">
 
           {/* Left: interaction list */}
           <div className="w-64 shrink-0 flex flex-col border-r border-gray-100 dark:border-dark-border bg-white dark:bg-dark-surface">
@@ -1118,6 +1157,150 @@ export function WorkspacePage() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* ── Mobile body ── */}
+        <div className="flex flex-col flex-1 min-h-0 md:hidden overflow-hidden">
+
+          {/* Mobile: List view */}
+          {(mobileView === 'list' || !activeInteraction) && (
+            <div className="flex flex-col flex-1 overflow-hidden bg-white dark:bg-dark-surface">
+              {/* Channel filter chips */}
+              <div className="flex gap-1.5 p-2 flex-wrap border-b border-gray-100 dark:border-dark-border shrink-0">
+                {CHANNELS.map(c => (
+                  <button key={c.val} onClick={() => setChannelFilter(c.val)}
+                    className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${channelFilter === c.val ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+              {/* Tabs */}
+              <div className="flex border-b border-gray-100 dark:border-dark-border shrink-0">
+                {([
+                  { key: 'mine',  label: `${t('workspace.my_interactions')} (${filteredMine.length})` },
+                  { key: 'queue', label: `${t('workspace.queue')} (${queueCounts.total})` },
+                ] as const).map(tab => (
+                  <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                    className={`flex-1 py-2.5 text-xs font-medium border-b-2 transition-colors ${activeTab === tab.key ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              {/* List */}
+              <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+                {activeTab === 'mine' && (
+                  <>
+                    {filteredMine.length === 0 && <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-8">{t('interactions.no_active')}</p>}
+                    {filteredMine.map(i => (
+                      <InteractionItem key={i.id} interaction={i}
+                        isActive={activeInteraction?.id === i.id}
+                        onClick={() => handleOpenMobile(i)} />
+                    ))}
+                  </>
+                )}
+                {activeTab === 'queue' && (
+                  <>
+                    {queueLoading && <div className="flex justify-center py-6"><div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>}
+                    {!queueLoading && queueList.length === 0 && <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-8">{t('interactions.queue_empty')}</p>}
+                    {queueList.map(i => (
+                      <InteractionItem key={i.id} interaction={i}
+                        isActive={activeInteraction?.id === i.id}
+                        onClick={() => handleOpenMobile(i)} />
+                    ))}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Mobile: Panel view */}
+          {mobileView === 'panel' && activeInteraction && (
+            <div className="flex flex-col flex-1 overflow-hidden bg-white dark:bg-dark-bg">
+              {/* Panel header */}
+              <div className="shrink-0 flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-dark-border bg-white dark:bg-dark-surface">
+                <ChannelBadge channel={activeInteraction.channel} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900 dark:text-white text-sm truncate">
+                    {activeInteraction.customer_first_name} {activeInteraction.customer_last_name}
+                  </p>
+                  {activeInteraction.subject && <p className="text-xs text-gray-400 truncate">{activeInteraction.subject}</p>}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {activeInteraction.status === 'active' && (
+                    <>
+                      <button onClick={() => setShowTransfer(true)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">
+                        <ArrowLeftRight className="w-4 h-4" />
+                      </button>
+                      <button onClick={handleStartWrapUp}
+                        className="px-2.5 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-xl">
+                        {t('chat.admin_end')}
+                      </button>
+                    </>
+                  )}
+                  {activeInteraction.status === 'wrap_up' && (
+                    <button onClick={() => setShowWrapUp(true)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white rounded-xl animate-pulse">
+                      <AlertCircle className="w-3.5 h-3.5" />{t('interactions.wrap_up_title')}
+                    </button>
+                  )}
+                  {activeInteraction.status === 'assigned' && (
+                    <button onClick={() => workspace.activateInteraction(activeInteraction.id)}
+                      className="px-2.5 py-1.5 text-xs font-medium bg-green-600 hover:bg-green-700 text-white rounded-xl">
+                      <Check className="w-3.5 h-3.5 inline mr-1" />{t('interactions.activate')}
+                    </button>
+                  )}
+                  <button onClick={() => { closePanel(); setMobileView('list') }}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              {/* Channel-specific content */}
+              {activeInteraction.channel === 'chat' && user?.id && (
+                <ChatPanel interaction={activeInteraction} agentId={user.id} onWrapUp={() => setShowWrapUp(true)} />
+              )}
+              {activeInteraction.channel === 'email' && (
+                <EmailPanel interaction={activeInteraction} onWrapUp={() => setShowWrapUp(true)} />
+              )}
+              {activeInteraction.channel === 'callback' && (
+                <CallbackPanel interaction={activeInteraction} onWrapUp={() => setShowWrapUp(true)} />
+              )}
+            </div>
+          )}
+
+          {/* Mobile: Client 360 view */}
+          {mobileView === 'client' && activeInteraction && (
+            <div className="flex-1 overflow-hidden bg-white dark:bg-dark-surface">
+              <Customer360 interaction={activeInteraction} />
+            </div>
+          )}
+
+          {/* Mobile: bottom tab bar (only when interaction is active) */}
+          {activeInteraction && (
+            <div className="shrink-0 flex border-t border-gray-100 dark:border-dark-border bg-white dark:bg-dark-surface safe-area-inset-bottom">
+              {([
+                { view: 'list' as const,   icon: <Inbox className="w-5 h-5" />,        label: t('workspace.tab_list') },
+                {
+                  view: 'panel' as const,
+                  icon: activeInteraction.channel === 'chat'
+                    ? <MessageSquare className="w-5 h-5" />
+                    : activeInteraction.channel === 'email'
+                    ? <Mail className="w-5 h-5" />
+                    : <Phone className="w-5 h-5" />,
+                  label: t('workspace.tab_interaction'),
+                },
+                { view: 'client' as const, icon: <User className="w-5 h-5" />,         label: t('workspace.tab_client') },
+              ]).map(item => (
+                <button key={item.view} onClick={() => setMobileView(item.view)}
+                  className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 text-xs transition-colors ${mobileView === item.view ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+                  {item.icon}
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
         </div>
       </div>
 

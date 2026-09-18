@@ -702,6 +702,9 @@ export const translations = {
       chat_count: 'Chat {active}/{max}',
       email_count: 'Email {active}/{max}',
       callback_count: 'Rappel {active}/{max}',
+      tab_list: 'Liste',
+      tab_interaction: 'Interaction',
+      tab_client: 'Client',
     },
     callback: {
       title: 'Rappel client',
@@ -1482,6 +1485,9 @@ export const translations = {
       chat_count: 'دردشة {active}/{max}',
       email_count: 'بريد {active}/{max}',
       callback_count: 'اتصال {active}/{max}',
+      tab_list: 'القائمة',
+      tab_interaction: 'التفاعل',
+      tab_client: 'العميل',
     },
     callback: {
       title: 'معاودة الاتصال',
