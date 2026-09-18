@@ -9,7 +9,7 @@ export interface CustomerFilters {
   pageSize?: number
   dateFrom?: string
   dateTo?: string
-  ordersFilter?: '' | 'none' | 'with' | '5plus'
+  ordersFilter?: '' | 'none' | 'with' | '5plus' | 'delivered'
 }
 
 export function useCustomers(filters: CustomerFilters = {}) {
@@ -61,9 +61,10 @@ export function useCustomers(filters: CustomerFilters = {}) {
       query = query.lte('created_at', filters.dateTo + 'T23:59:59.999')
     }
 
-    if (filters.ordersFilter === 'none')  query = query.eq('order_count', 0)
-    if (filters.ordersFilter === 'with')  query = query.gte('order_count', 1)
-    if (filters.ordersFilter === '5plus') query = query.gte('order_count', 5)
+    if (filters.ordersFilter === 'none')      query = query.eq('order_count', 0)
+    if (filters.ordersFilter === 'with')      query = query.gte('order_count', 1)
+    if (filters.ordersFilter === '5plus')     query = query.gte('order_count', 5)
+    if (filters.ordersFilter === 'delivered') query = query.gte('delivered_count', 1)
 
     const { data, error: err, count } = await query
     if (!mounted.current) return

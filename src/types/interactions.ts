@@ -165,6 +165,7 @@ export interface CustomerV2 {
 
 export interface CustomerView extends CustomerV2 {
   order_count: number
+  delivered_count: number
   interaction_count: number
   last_order_at: string | null
   last_interaction_at: string | null
