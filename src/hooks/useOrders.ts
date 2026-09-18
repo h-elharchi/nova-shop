@@ -206,11 +206,19 @@ export function useOrders(filters: OrderFilters = {}) {
 
 // ─── Stats dashboard ──────────────────────────────────────────
 
+const ALL_STATUSES: OrderStatus[] = [
+  'new', 'assigned', 'contacted', 'unreachable', 'callback',
+  'confirmed', 'processing', 'shipped', 'delivered',
+  'returned', 'cancelled', 'on_hold',
+]
+
+export type OrderStatsByStatus = Record<OrderStatus, number>
+
 export function useOrderStats() {
-  const [stats, setStats] = useState({
-    new: 0, pending: 0, confirmed: 0, delivered: 0, cancelled: 0,
-    // Legacy keys gardés pour compatibilité dashboard existant
-    contacted: 0, completed: 0,
+  const [byStatus, setByStatus] = useState<OrderStatsByStatus>(() => {
+    const init = {} as OrderStatsByStatus
+    ALL_STATUSES.forEach(s => { init[s] = 0 })
+    return init
   })
   const [recent, setRecent]   = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
@@ -223,21 +231,17 @@ export function useOrderStats() {
         .order('created_at', { ascending: false })
 
       const all = (data ?? []) as Order[]
-      setStats({
-        new:       all.filter(o => o.status === 'new').length,
-        pending:   all.filter(o => ['assigned','contacted','unreachable','callback','on_hold'].includes(o.status)).length,
-        confirmed: all.filter(o => ['confirmed','processing','shipped'].includes(o.status)).length,
-        delivered: all.filter(o => o.status === 'delivered').length,
-        cancelled: all.filter(o => ['cancelled','returned'].includes(o.status)).length,
-        // Legacy
-        contacted: all.filter(o => o.status === 'contacted').length,
-        completed: all.filter(o => o.status === 'delivered').length,
-      })
+
+      const counts = {} as OrderStatsByStatus
+      ALL_STATUSES.forEach(s => { counts[s] = 0 })
+      all.forEach(o => { if (counts[o.status] !== undefined) counts[o.status]++ })
+
+      setByStatus(counts)
       setRecent(all.slice(0, 5))
       setLoading(false)
     }
     fetch()
   }, [])
 
-  return { stats, recent, loading }
+  return { byStatus, recent, loading }
 }

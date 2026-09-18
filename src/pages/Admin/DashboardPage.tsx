@@ -6,6 +6,28 @@ import { useI18n } from '../../context/LanguageContext'
 import { useOrderStats } from '../../hooks/useOrders'
 import { OrderStatusBadge } from '../../components/orders/OrderStatusBadge'
 import { AdminLayout } from './AdminLayout'
+import type { OrderStatus } from '../../types'
+
+const STATUS_CONFIG: Record<OrderStatus, { bg: string; text: string; border: string }> = {
+  new:         { bg: 'bg-blue-50 dark:bg-blue-900/20',      text: 'text-blue-700 dark:text-blue-300',      border: 'border-blue-100 dark:border-blue-800/40' },
+  assigned:    { bg: 'bg-indigo-50 dark:bg-indigo-900/20',  text: 'text-indigo-700 dark:text-indigo-300',  border: 'border-indigo-100 dark:border-indigo-800/40' },
+  contacted:   { bg: 'bg-yellow-50 dark:bg-yellow-900/20',  text: 'text-yellow-700 dark:text-yellow-300',  border: 'border-yellow-100 dark:border-yellow-800/40' },
+  unreachable: { bg: 'bg-orange-50 dark:bg-orange-900/20',  text: 'text-orange-700 dark:text-orange-300',  border: 'border-orange-100 dark:border-orange-800/40' },
+  callback:    { bg: 'bg-purple-50 dark:bg-purple-900/20',  text: 'text-purple-700 dark:text-purple-300',  border: 'border-purple-100 dark:border-purple-800/40' },
+  confirmed:   { bg: 'bg-green-50 dark:bg-green-900/20',    text: 'text-green-700 dark:text-green-300',    border: 'border-green-100 dark:border-green-800/40' },
+  processing:  { bg: 'bg-teal-50 dark:bg-teal-900/20',      text: 'text-teal-700 dark:text-teal-300',      border: 'border-teal-100 dark:border-teal-800/40' },
+  shipped:     { bg: 'bg-cyan-50 dark:bg-cyan-900/20',      text: 'text-cyan-700 dark:text-cyan-300',      border: 'border-cyan-100 dark:border-cyan-800/40' },
+  delivered:   { bg: 'bg-emerald-50 dark:bg-emerald-900/20',text: 'text-emerald-700 dark:text-emerald-300',border: 'border-emerald-100 dark:border-emerald-800/40' },
+  returned:    { bg: 'bg-rose-50 dark:bg-rose-900/20',      text: 'text-rose-700 dark:text-rose-300',      border: 'border-rose-100 dark:border-rose-800/40' },
+  cancelled:   { bg: 'bg-red-50 dark:bg-red-900/20',        text: 'text-red-700 dark:text-red-300',        border: 'border-red-100 dark:border-red-800/40' },
+  on_hold:     { bg: 'bg-gray-50 dark:bg-gray-700/30',      text: 'text-gray-600 dark:text-gray-300',      border: 'border-gray-100 dark:border-gray-700' },
+}
+
+const STATUS_ORDER: OrderStatus[] = [
+  'new', 'assigned', 'contacted', 'unreachable', 'callback',
+  'confirmed', 'processing', 'shipped', 'delivered',
+  'returned', 'cancelled', 'on_hold',
+]
 
 interface ProductStats {
   total: number
@@ -29,7 +51,7 @@ export function AdminDashboard() {
   const { t } = useI18n()
   const [stats, setStats] = useState<ProductStats>({ total: 0, active: 0, inactive: 0, featured: 0, new_products: 0, categories: 0 })
   const [loadingProducts, setLoadingProducts] = useState(true)
-  const { stats: orderStats, recent, loading: loadingOrders } = useOrderStats()
+  const { byStatus, recent, loading: loadingOrders } = useOrderStats()
 
   useEffect(() => {
     async function fetchStats() {
@@ -58,14 +80,6 @@ export function AdminDashboard() {
     { label: t('admin.featured_products'), value: stats.featured, icon: <Star className="w-6 h-6 text-amber-500 dark:text-amber-400" />, bg: 'bg-amber-50 dark:bg-amber-900/30' },
     { label: t('admin.new_products'), value: stats.new_products, icon: <Sparkles className="w-6 h-6 text-purple-600 dark:text-purple-400" />, bg: 'bg-purple-50 dark:bg-purple-900/30' },
     { label: t('admin.total_categories'), value: stats.categories, icon: <Tag className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />, bg: 'bg-indigo-50 dark:bg-indigo-900/30' },
-  ]
-
-  const orderCards = [
-    { label: t('order.orders_new'), value: orderStats.new, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/30' },
-    { label: t('order.orders_contacted'), value: orderStats.contacted, color: 'text-yellow-600 dark:text-yellow-400', bg: 'bg-yellow-50 dark:bg-yellow-900/30' },
-    { label: t('order.orders_confirmed'), value: orderStats.confirmed, color: 'text-green-600 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-900/30' },
-    { label: t('order.orders_completed'), value: orderStats.completed, color: 'text-gray-600 dark:text-gray-300', bg: 'bg-gray-100 dark:bg-gray-700/50' },
-    { label: t('order.orders_cancelled'), value: orderStats.cancelled, color: 'text-red-500 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/30' },
   ]
 
   return (
@@ -111,13 +125,20 @@ export function AdminDashboard() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
-            {orderCards.map((card) => (
-              <div key={card.label} className={`${card.bg} rounded-xl p-4 text-center transition-colors duration-200`}>
-                <div className={`text-2xl font-bold ${card.color}`}>{card.value}</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">{card.label}</div>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3 mb-6">
+            {STATUS_ORDER.map(status => {
+              const cfg = STATUS_CONFIG[status]
+              return (
+                <Link
+                  key={status}
+                  to={`/admin/orders?status=${status}`}
+                  className={`${cfg.bg} border ${cfg.border} rounded-xl p-4 text-center transition-all duration-200 hover:scale-[1.02] hover:shadow-sm`}
+                >
+                  <div className={`text-2xl font-bold ${cfg.text}`}>{byStatus[status]}</div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 truncate">{t(`order.status_${status}`)}</div>
+                </Link>
+              )
+            })}
           </div>
 
           {/* Recent orders */}
