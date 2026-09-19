@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import type { Order, OrderStatus, OrderChannel } from '../types'
+import type { Order, OrderStatus, OrderChannel, OrderStatusHistoryEntry } from '../types'
 
 export function validateMoroccanPhone(phone: string): boolean {
   const cleaned = phone.replace(/\s+/g, '')
@@ -156,7 +156,7 @@ export function useOrders(filters: OrderFilters = {}) {
 
     let query = supabase
       .from('orders')
-      .select('*, product:products(id,slug,name_fr,name_ar,images:product_images(image_url,display_order))')
+      .select('*, product:products(id,slug,name_fr,name_ar,images:product_images(image_url,display_order)), assigned_agent:profiles!assigned_agent_id(first_name,last_name)')
       .order('created_at', { ascending: false })
 
     if (filters.status)  query = query.eq('status',  filters.status)
@@ -189,8 +189,14 @@ export function useOrders(filters: OrderFilters = {}) {
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
 
-  const updateStatus = async (id: string, status: OrderStatus) => {
-    const { error: err } = await supabase.from('orders').update({ status }).eq('id', id)
+  const updateStatus = async (id: string, status: OrderStatus, note?: string) => {
+    // Passe par la RPC (pas un UPDATE direct) pour journaliser qui a changé le
+    // statut dans order_status_history — voir useOrderHistory().
+    const { error: err } = await supabase.rpc('update_order_status', {
+      p_order_id: id,
+      p_status:   status,
+      p_note:     note?.trim() || null,
+    })
     if (!err) setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o))
     return !err
   }
@@ -202,6 +208,29 @@ export function useOrders(filters: OrderFilters = {}) {
   }
 
   return { orders, loading, error, updateStatus, updateNotes, refetch: fetchOrders }
+}
+
+// ─── Historique des interventions sur une commande ────────────
+
+export function useOrderHistory(orderId: string | null) {
+  const [history, setHistory] = useState<OrderStatusHistoryEntry[]>([])
+  const [loading, setLoading] = useState(false)
+
+  const fetchHistory = useCallback(async () => {
+    if (!orderId) { setHistory([]); return }
+    setLoading(true)
+    const { data } = await supabase
+      .from('order_status_history')
+      .select('*, actor:profiles!actor_id(first_name,last_name,email)')
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: false })
+    setHistory((data ?? []) as OrderStatusHistoryEntry[])
+    setLoading(false)
+  }, [orderId])
+
+  useEffect(() => { fetchHistory() }, [fetchHistory])
+
+  return { history, loading, refetch: fetchHistory }
 }
 
 // ─── Stats dashboard ──────────────────────────────────────────

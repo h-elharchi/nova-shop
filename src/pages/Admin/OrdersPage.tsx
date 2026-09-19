@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Phone, MessageCircle, Search, Download, RotateCcw, Plus } from 'lucide-react'
+import { Phone, MessageCircle, Search, Download, RotateCcw, Plus, History, X, User } from 'lucide-react'
 import { useI18n } from '../../context/LanguageContext'
-import { useOrders } from '../../hooks/useOrders'
+import { useOrders, useOrderHistory } from '../../hooks/useOrders'
 import { exportOrdersToExcel } from '../../lib/exportExcel'
 import { OrderStatusBadge } from '../../components/orders/OrderStatusBadge'
 import { OrderCreateModal } from '../../components/orders/OrderCreateModal'
@@ -104,6 +104,71 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(hrs / 24)}j`
 }
 
+// ─── Modal historique ───────────────────────────────────────────
+
+function OrderHistoryModal({ orderId, onClose, t }: {
+  orderId: string
+  onClose: () => void
+  t: (k: string) => string
+}) {
+  const { history, loading } = useOrderHistory(orderId)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white dark:bg-dark-card rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-dark-border shrink-0">
+          <h2 className="font-bold text-gray-900 dark:text-white">{t('order.history_title')}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="w-6 h-6 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : history.length === 0 ? (
+            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">{t('order.history_empty')}</p>
+          ) : (
+            history.map(entry => {
+              const agentName = entry.actor
+                ? [entry.actor.first_name, entry.actor.last_name].filter(Boolean).join(' ') || entry.actor.email
+                : t('order.history_site')
+              return (
+                <div key={entry.id} className="flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0 mt-0.5">
+                    <User className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-900 dark:text-gray-100">
+                      {entry.old_status
+                        ? <>{t('order.history_changed')} <OrderStatusBadge status={entry.old_status} /> → <OrderStatusBadge status={entry.new_status} /></>
+                        : <>{t('order.history_created')} — <OrderStatusBadge status={entry.new_status} /></>
+                      }
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {t('order.history_by')} <span className="font-medium">{agentName}</span>
+                      {' · '}{new Date(entry.created_at).toLocaleString('fr-MA')}
+                    </p>
+                    {entry.note && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 italic">{entry.note}</p>
+                    )}
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+        <div className="p-4 border-t border-gray-100 dark:border-dark-border shrink-0">
+          <button onClick={onClose} className="w-full py-2 rounded-xl bg-gray-100 dark:bg-gray-700 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+            {t('order.history_close')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function AdminOrdersPage() {
   const { t, lang } = useI18n()
 
@@ -121,6 +186,7 @@ export function AdminOrdersPage() {
   const [exporting, setExporting]         = useState(false)
   const [exportMsg, setExportMsg]         = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [historyOrderId, setHistoryOrderId] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = setTimeout(() => setSearch(searchInput), 400)
@@ -411,6 +477,13 @@ export function AdminOrdersPage() {
                       </p>
                     )}
 
+                    <p className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                      <User className="w-3 h-3" />
+                      {order.assigned_agent
+                        ? [order.assigned_agent.first_name, order.assigned_agent.last_name].filter(Boolean).join(' ')
+                        : t('order.no_agent')}
+                    </p>
+
                     <div className="flex items-center gap-3 mt-2 flex-wrap">
                       <a
                         href={`tel:${tel}`}
@@ -441,6 +514,13 @@ export function AdminOrdersPage() {
                           <option key={s.value} value={s.value}>{t(s.labelKey)}</option>
                         ))}
                       </select>
+                      <button
+                        onClick={() => setHistoryOrderId(order.id)}
+                        className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
+                      >
+                        <History className="w-3.5 h-3.5" />
+                        {t('order.history_btn')}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -471,6 +551,14 @@ export function AdminOrdersPage() {
         <OrderCreateModal
           onClose={() => setShowCreateModal(false)}
           onSuccess={() => refetch()}
+        />
+      )}
+
+      {historyOrderId && (
+        <OrderHistoryModal
+          orderId={historyOrderId}
+          onClose={() => setHistoryOrderId(null)}
+          t={t}
         />
       )}
     </AdminLayout>

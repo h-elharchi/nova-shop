@@ -136,6 +136,18 @@ export interface Order {
   updated_at: string
   product?: Pick<Product, 'id' | 'slug' | 'name_fr' | 'name_ar' | 'images'>
   customer?: Pick<Customer, 'id' | 'first_name' | 'last_name' | 'email'>
+  assigned_agent?: { first_name: string | null; last_name: string | null } | null
+}
+
+export interface OrderStatusHistoryEntry {
+  id: string
+  order_id: string
+  actor_id: string | null
+  old_status: OrderStatus | null
+  new_status: OrderStatus
+  note: string | null
+  created_at: string
+  actor?: { first_name: string | null; last_name: string | null; email?: string | null } | null
 }
 
 // ─── Email ────────────────────────────────────────────────────
