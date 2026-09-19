@@ -5,7 +5,7 @@ import type { Language } from '../../types'
 
 interface WhatsAppButtonProps {
   productName?: string
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'xs' | 'sm' | 'md' | 'lg'
   fullWidth?: boolean
 }
 
@@ -20,12 +20,14 @@ export function WhatsAppButton({ productName, size = 'md', fullWidth = false }: 
   }
 
   const sizeClasses = {
+    xs: 'text-xs px-2 py-1.5 gap-1',
     sm: 'text-sm px-3 py-1.5 gap-1.5',
     md: 'text-sm px-4 py-2 gap-2',
     lg: 'text-base px-6 py-3 gap-2',
   }
 
   const iconSize = {
+    xs: 'w-3.5 h-3.5',
     sm: 'w-4 h-4',
     md: 'w-4 h-4',
     lg: 'w-5 h-5',

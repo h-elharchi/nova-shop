@@ -13,8 +13,8 @@ export function HomePage() {
   const { products: featuredProducts } = useProducts({})
   const { categories } = useCategories()
 
-  const newItems = newProducts.filter(p => p.is_new).slice(0, 4)
-  const featured = featuredProducts.filter(p => p.is_featured).slice(0, 4)
+  const newItems = newProducts.filter(p => p.is_new).slice(0, 10)
+  const featured = featuredProducts.filter(p => p.is_featured).slice(0, 10)
 
   return (
     <Layout>
@@ -50,7 +50,7 @@ export function HomePage() {
                 {t('sections.view_all')}
               </Link>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
               {newItems.map(p => <ProductCard key={p.id} product={p} />)}
             </div>
           </div>
@@ -67,7 +67,7 @@ export function HomePage() {
                 {t('sections.view_all')}
               </Link>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
               {featured.map(p => <ProductCard key={p.id} product={p} />)}
             </div>
           </div>

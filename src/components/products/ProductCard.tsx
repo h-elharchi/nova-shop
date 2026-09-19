@@ -43,19 +43,19 @@ export function ProductCard({ product }: ProductCardProps) {
           </div>
 
           {/* Badges */}
-          <div className="absolute top-2 left-2 flex flex-col gap-1">
+          <div className="absolute top-1.5 left-1.5 flex flex-col gap-0.5">
             {product.is_new && (
-              <span className="bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+              <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                 {t('product.new_badge')}
               </span>
             )}
             {product.is_featured && (
-              <span className="bg-amber-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+              <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                 {t('product.popular_badge')}
               </span>
             )}
             {discount && (
-              <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+              <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                 -{discount}%
               </span>
             )}
@@ -63,7 +63,7 @@ export function ProductCard({ product }: ProductCardProps) {
 
           {!product.stock_available && (
             <div className="absolute inset-0 bg-white/70 dark:bg-black/60 flex items-center justify-center">
-              <span className="bg-gray-800 dark:bg-gray-900 text-white text-sm font-medium px-3 py-1 rounded-full">
+              <span className="bg-gray-800 dark:bg-gray-900 text-white text-xs font-medium px-2.5 py-1 rounded-full">
                 {t('product.unavailable')}
               </span>
             </div>
@@ -71,38 +71,38 @@ export function ProductCard({ product }: ProductCardProps) {
         </Link>
 
         {/* Info */}
-        <div className="p-4">
-          <div className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">
+        <div className="p-2 sm:p-3">
+          <div className="text-[10px] sm:text-xs text-blue-600 dark:text-blue-400 font-medium mb-0.5 truncate">
             {lang === 'ar' ? product.category?.name_ar : product.category?.name_fr}
           </div>
           <Link to={`/products/${product.slug}`}>
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm leading-tight mb-2 line-clamp-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm leading-snug mb-1 line-clamp-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
               {name}
             </h3>
           </Link>
 
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-lg font-bold text-gray-900 dark:text-white">
+          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+            <span className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">
               {product.price.toLocaleString()} {t('common.mad')}
             </span>
             {product.old_price && (
-              <span className="text-sm text-gray-400 dark:text-gray-500 line-through">
+              <span className="text-xs text-gray-400 dark:text-gray-500 line-through">
                 {product.old_price.toLocaleString()}
               </span>
             )}
           </div>
 
           {/* Buttons */}
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1.5">
             {product.stock_available && (
               <button
                 onClick={() => setShowOrder(true)}
-                className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors"
+                className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-semibold text-xs sm:text-sm py-1.5 sm:py-2 rounded-lg transition-colors"
               >
                 {t('order.btn')}
               </button>
             )}
-            <WhatsAppButton productName={name} size="sm" fullWidth />
+            <WhatsAppButton productName={name} size="xs" fullWidth />
           </div>
         </div>
       </div>

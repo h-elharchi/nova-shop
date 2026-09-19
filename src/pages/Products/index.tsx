@@ -53,7 +53,7 @@ export function ProductsPage() {
               <div className="text-center py-20 text-gray-400 dark:text-gray-500">{t('common.no_products')}</div>
             )}
             {!loading && !error && products.length > 0 && (
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
                 {products.map(p => <ProductCard key={p.id} product={p} />)}
               </div>
             )}
