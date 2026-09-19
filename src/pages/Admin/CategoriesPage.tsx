@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent, ChangeEvent } from 'react'
-import { PlusCircle, Pencil, Trash2, X, ChevronUp, ChevronDown } from 'lucide-react'
+import { PlusCircle, Pencil, Trash2, X, ChevronUp, ChevronDown, Upload, ImageOff } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useI18n } from '../../context/LanguageContext'
 import { AdminLayout } from './AdminLayout'
@@ -29,6 +29,9 @@ export function AdminCategoriesPage() {
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [reordering, setReordering] = useState(false)
+  const [newImage, setNewImage] = useState<File | null>(null)
+  const [newImagePreview, setNewImagePreview] = useState<string | null>(null)
+  const [uploadError, setUploadError] = useState('')
 
   const fetchCategories = async () => {
     setLoading(true)
@@ -60,10 +63,17 @@ export function AdminCategoriesPage() {
     setReordering(false)
   }
 
-  const openNew = () => { setEditing(null); setForm(empty); setShowForm(true) }
+  const resetImageState = () => {
+    setNewImage(null)
+    setNewImagePreview(prev => { if (prev) URL.revokeObjectURL(prev); return null })
+    setUploadError('')
+  }
+
+  const openNew = () => { setEditing(null); setForm(empty); resetImageState(); setShowForm(true) }
   const openEdit = (cat: Category) => {
     setEditing(cat)
     setForm({ name_fr: cat.name_fr, name_ar: cat.name_ar, slug: cat.slug, image_url: cat.image_url ?? '', is_active: cat.is_active })
+    resetImageState()
     setShowForm(true)
   }
 
@@ -76,10 +86,42 @@ export function AdminCategoriesPage() {
     }))
   }
 
+  const handleImageFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setNewImagePreview(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file) })
+    setNewImage(file)
+    setUploadError('')
+  }
+
+  const handleRemoveImage = () => {
+    resetImageState()
+    setForm(prev => ({ ...prev, image_url: '' }))
+  }
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setSaving(true)
-    const payload = { ...form, image_url: form.image_url || null }
+    setUploadError('')
+
+    let imageUrl = form.image_url || null
+
+    if (newImage) {
+      const ext = newImage.name.split('.').pop()
+      const path = `${form.slug || 'categorie'}-${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from('category-images')
+        .upload(path, newImage, { upsert: true })
+      if (upErr) {
+        setUploadError(`Erreur upload : ${upErr.message}`)
+        setSaving(false)
+        return
+      }
+      const { data: urlData } = supabase.storage.from('category-images').getPublicUrl(path)
+      imageUrl = urlData.publicUrl
+    }
+
+    const payload = { ...form, image_url: imageUrl }
     if (editing) {
       await supabase.from('categories').update(payload).eq('id', editing.id)
     } else {
@@ -87,6 +129,7 @@ export function AdminCategoriesPage() {
     }
     setSaving(false)
     setShowForm(false)
+    resetImageState()
     fetchCategories()
   }
 
@@ -149,8 +192,19 @@ export function AdminCategoriesPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="font-medium text-sm text-gray-900 dark:text-gray-100">{lang === 'ar' ? cat.name_ar : cat.name_fr}</div>
-                    <div className="text-xs text-gray-400 dark:text-gray-500">{lang === 'ar' ? cat.name_fr : cat.name_ar}</div>
+                    <div className="flex items-center gap-2.5">
+                      {cat.image_url ? (
+                        <img src={cat.image_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center shrink-0">
+                          <ImageOff className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />
+                        </div>
+                      )}
+                      <div>
+                        <div className="font-medium text-sm text-gray-900 dark:text-gray-100">{lang === 'ar' ? cat.name_ar : cat.name_fr}</div>
+                        <div className="text-xs text-gray-400 dark:text-gray-500">{lang === 'ar' ? cat.name_fr : cat.name_ar}</div>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono">{cat.slug}</td>
                   <td className="px-4 py-3">
@@ -205,9 +259,34 @@ export function AdminCategoriesPage() {
                   className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">URL Image (optionnel)</label>
-                <input name="image_url" value={form.image_url} onChange={handleChange}
-                  className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors" />
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('forms.category_image')}</label>
+                <div className="flex items-center gap-3">
+                  {newImagePreview || form.image_url ? (
+                    <img
+                      src={newImagePreview || form.image_url}
+                      alt=""
+                      className="w-16 h-16 rounded-lg object-cover border border-gray-200 dark:border-gray-600 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center text-gray-300 dark:text-gray-600 shrink-0">
+                      <ImageOff className="w-6 h-6" />
+                    </div>
+                  )}
+                  <div className="flex-1 flex items-center gap-2">
+                    <label className="inline-flex items-center gap-1.5 cursor-pointer border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                      <Upload className="w-3.5 h-3.5" />
+                      {t('forms.category_image_upload')}
+                      <input type="file" accept="image/*" className="hidden" onChange={handleImageFileChange} />
+                    </label>
+                    {(newImagePreview || form.image_url) && (
+                      <button type="button" onClick={handleRemoveImage}
+                        className="text-xs text-red-500 hover:underline">
+                        {t('forms.category_image_remove')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {uploadError && <p className="text-xs text-red-500 mt-1.5">{uploadError}</p>}
               </div>
               <label className="flex items-center gap-2">
                 <input type="checkbox" name="is_active" checked={form.is_active} onChange={handleChange} className="w-4 h-4 text-blue-600 rounded" />
