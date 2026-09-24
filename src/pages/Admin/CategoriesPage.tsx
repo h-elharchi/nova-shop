@@ -2,7 +2,7 @@ import { useState, useEffect, FormEvent, ChangeEvent } from 'react'
 import { PlusCircle, Pencil, Trash2, X, ChevronUp, ChevronDown, Upload, ImageOff, CornerDownRight, Plus } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useI18n } from '../../context/LanguageContext'
-import { flattenCategoryTree, getChildren, getTopLevel } from '../../lib/categories'
+import { loadCategories, flattenCategoryTree, categoryOptionLabel, getChildren, getTopLevel, getDescendantIds, parentIdsOf } from '../../lib/categories'
 import { AdminLayout } from './AdminLayout'
 import type { Category } from '../../types'
 
@@ -12,10 +12,11 @@ interface CategoryForm {
   slug: string
   image_url: string
   is_active: boolean
-  parent_id: string
+  parent_ids: string[]
+  show_at_root: boolean
 }
 
-const empty: CategoryForm = { name_fr: '', name_ar: '', slug: '', image_url: '', is_active: true, parent_id: '' }
+const empty: CategoryForm = { name_fr: '', name_ar: '', slug: '', image_url: '', is_active: true, parent_ids: [], show_at_root: false }
 
 function slugify(text: string) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -39,37 +40,44 @@ export function AdminCategoriesPage() {
 
   const fetchCategories = async () => {
     setLoading(true)
-    const { data } = await supabase.from('categories').select('*').order('display_order').order('name_fr')
-    setCategories(data ?? [])
+    const { data } = await loadCategories(false)
+    setCategories(data)
     setLoading(false)
   }
 
   useEffect(() => { fetchCategories() }, [])
 
-  // Les flèches réordonnent parmi les catégories de même niveau (même parent).
-  const siblingsOf = (cat: Category) =>
-    cat.parent_id ? getChildren(categories, cat.parent_id) : getTopLevel(categories)
+  // Les flèches réordonnent parmi les catégories de même niveau : celles du premier niveau
+  // (categories.display_order) ou celles d'un même parent (category_parents.display_order).
+  // `parentId` est le parent sous lequel la ligne est affichée (null = premier niveau).
+  const siblingsUnder = (parentId: string | null) =>
+    parentId ? getChildren(categories, parentId) : getTopLevel(categories)
 
-  const moveCategory = async (id: string, direction: 'up' | 'down') => {
+  const moveCategory = async (id: string, parentId: string | null, direction: 'up' | 'down') => {
     if (reordering) return
-    const cat = categories.find(c => c.id === id)
-    if (!cat) return
-    const siblings = siblingsOf(cat)
+    const siblings = siblingsUnder(parentId)
     const idx = siblings.findIndex(c => c.id === id)
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1
     if (idx === -1 || targetIdx < 0 || targetIdx >= siblings.length) return
 
     // Renumérote les frères selon l'ordre visuel actuel puis échange les deux positions
-    const reordered = siblings.map((c, i) => ({ ...c, display_order: i }))
-    const tmp = reordered[idx].display_order
-    reordered[idx].display_order = reordered[targetIdx].display_order
-    reordered[targetIdx].display_order = tmp
+    const order = siblings.map((c, i) => ({ id: c.id, position: i }))
+    const tmp = order[idx].position
+    order[idx].position = order[targetIdx].position
+    order[targetIdx].position = tmp
+    const newOrder = new Map(order.map(o => [o.id, o.position]))
 
-    const newOrder = new Map(reordered.map(c => [c.id, c.display_order]))
-    setCategories(prev => prev.map(c => newOrder.has(c.id) ? { ...c, display_order: newOrder.get(c.id)! } : c))
+    setCategories(prev => prev.map(c => {
+      const pos = newOrder.get(c.id)
+      if (pos === undefined) return c
+      if (!parentId) return { ...c, display_order: pos }
+      return { ...c, parent_links: c.parent_links.map(l => l.parent_id === parentId ? { ...l, display_order: pos } : l) }
+    }))
     setReordering(true)
     await Promise.all(
-      reordered.map(c => supabase.from('categories').update({ display_order: c.display_order }).eq('id', c.id))
+      order.map(o => parentId
+        ? supabase.from('category_parents').update({ display_order: o.position }).eq('category_id', o.id).eq('parent_id', parentId)
+        : supabase.from('categories').update({ display_order: o.position }).eq('id', o.id))
     )
     setReordering(false)
   }
@@ -81,22 +89,32 @@ export function AdminCategoriesPage() {
     setFormError('')
   }
 
-  const openNew = (parentId = '') => {
+  const openNew = (parentId?: string) => {
     setEditing(null)
-    setForm({ ...empty, parent_id: parentId })
+    setForm({ ...empty, parent_ids: parentId ? [parentId] : [] })
     resetImageState()
     setShowForm(true)
   }
   const openEdit = (cat: Category) => {
     setEditing(cat)
-    setForm({ name_fr: cat.name_fr, name_ar: cat.name_ar, slug: cat.slug, image_url: cat.image_url ?? '', is_active: cat.is_active, parent_id: cat.parent_id ?? '' })
+    setForm({
+      name_fr: cat.name_fr, name_ar: cat.name_ar, slug: cat.slug, image_url: cat.image_url ?? '',
+      is_active: cat.is_active, parent_ids: parentIdsOf(cat), show_at_root: cat.show_at_root,
+    })
     resetImageState()
     setShowForm(true)
   }
 
-  // Une catégorie qui a des sous-catégories ne peut pas devenir une sous-catégorie.
-  const editingHasChildren = editing ? getChildren(categories, editing.id).length > 0 : false
-  const parentOptions = getTopLevel(categories).filter(c => c.id !== editing?.id)
+  // Parents possibles : toute catégorie sauf elle-même et ses propres sous-catégories (pas de cycle).
+  const forbiddenParents = editing ? getDescendantIds(categories, editing.id) : new Set<string>()
+  const parentOptions = flattenCategoryTree(categories, true).filter(c => !forbiddenParents.has(c.id))
+
+  const toggleParent = (id: string) => {
+    setForm(prev => ({
+      ...prev,
+      parent_ids: prev.parent_ids.includes(id) ? prev.parent_ids.filter(p => p !== id) : [...prev.parent_ids, id],
+    }))
+  }
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target
@@ -142,18 +160,53 @@ export function AdminCategoriesPage() {
       imageUrl = urlData.publicUrl
     }
 
-    const parentId = form.parent_id || null
-    const payload = { ...form, image_url: imageUrl, parent_id: parentId }
-    const { error: saveErr } = editing
-      ? await supabase.from('categories').update(payload).eq('id', editing.id)
-      : await supabase.from('categories').insert({
-          ...payload,
-          display_order: categories.filter(c => (c.parent_id ?? null) === parentId).length,
-        })
-    if (saveErr) {
-      setFormError(saveErr.message)
-      setSaving(false)
-      return
+    const { parent_ids, ...fields } = form
+    const payload = { ...fields, image_url: imageUrl, show_at_root: parent_ids.length > 0 && form.show_at_root }
+
+    let categoryId = editing?.id
+    if (editing) {
+      const { error: saveErr } = await supabase.from('categories').update(payload).eq('id', editing.id)
+      if (saveErr) {
+        setFormError(saveErr.message)
+        setSaving(false)
+        return
+      }
+    } else {
+      const { data: created, error: saveErr } = await supabase
+        .from('categories')
+        .insert({ ...payload, display_order: getTopLevel(categories).length })
+        .select('id')
+        .single()
+      if (saveErr || !created) {
+        setFormError(saveErr?.message ?? '')
+        setSaving(false)
+        return
+      }
+      categoryId = created.id as string
+    }
+
+    // Synchronise les liens de parenté : retire les décochés, ajoute les nouveaux en fin de liste.
+    const current = editing ? parentIdsOf(editing) : []
+    const toRemove = current.filter(p => !parent_ids.includes(p))
+    const toAdd = parent_ids.filter(p => !current.includes(p))
+    if (toRemove.length > 0) {
+      const { error: delErr } = await supabase.from('category_parents').delete().eq('category_id', categoryId!).in('parent_id', toRemove)
+      if (delErr) {
+        setFormError(delErr.message)
+        setSaving(false)
+        return
+      }
+    }
+    if (toAdd.length > 0) {
+      const { error: linkErr } = await supabase.from('category_parents').insert(
+        toAdd.map(p => ({ category_id: categoryId!, parent_id: p, display_order: getChildren(categories, p).length }))
+      )
+      if (linkErr) {
+        setFormError(linkErr.message)
+        setSaving(false)
+        fetchCategories()
+        return
+      }
     }
     setSaving(false)
     setShowForm(false)
@@ -205,15 +258,19 @@ export function AdminCategoriesPage() {
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
               {tree.map(cat => {
-                const siblings = siblingsOf(cat)
+                // Parent sous lequel cette ligne est affichée (null = premier niveau).
+                const keys = cat.treeKey.split('>')
+                const rowParentId = keys.length > 1 ? keys[keys.length - 2] : null
+                const siblings = siblingsUnder(rowParentId)
                 const pos = siblings.findIndex(c => c.id === cat.id)
+                const indent = { paddingLeft: `${cat.depth * 20}px` }
                 return (
-                <tr key={cat.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors ${cat.depth === 1 ? 'bg-gray-50/50 dark:bg-gray-800/30' : ''}`}>
+                <tr key={cat.treeKey} className={`hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors ${cat.depth > 0 ? 'bg-gray-50/50 dark:bg-gray-800/30' : ''}`}>
                   <td className="px-4 py-3">
-                    <div className={`flex items-center gap-1 ${cat.depth === 1 ? 'pl-4' : ''}`}>
+                    <div className="flex items-center gap-1" style={indent}>
                       <button
                         type="button"
-                        onClick={() => moveCategory(cat.id, 'up')}
+                        onClick={() => moveCategory(cat.id, rowParentId, 'up')}
                         disabled={pos === 0 || reordering}
                         title="Monter"
                         className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-30 disabled:pointer-events-none"
@@ -222,7 +279,7 @@ export function AdminCategoriesPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => moveCategory(cat.id, 'down')}
+                        onClick={() => moveCategory(cat.id, rowParentId, 'down')}
                         disabled={pos === siblings.length - 1 || reordering}
                         title="Descendre"
                         className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-30 disabled:pointer-events-none"
@@ -232,8 +289,8 @@ export function AdminCategoriesPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className={`flex items-center gap-2.5 ${cat.depth === 1 ? 'pl-4' : ''}`}>
-                      {cat.depth === 1 && <CornerDownRight className="w-4 h-4 text-gray-300 dark:text-gray-600 shrink-0" />}
+                    <div className="flex items-center gap-2.5" style={indent}>
+                      {cat.depth > 0 && <CornerDownRight className="w-4 h-4 text-gray-300 dark:text-gray-600 shrink-0" />}
                       {cat.image_url ? (
                         <img src={cat.image_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
                       ) : (
@@ -255,12 +312,10 @@ export function AdminCategoriesPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
-                      {cat.depth === 0 && (
-                        <button onClick={() => openNew(cat.id)} title={t('forms.add_subcategory')}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors">
-                          <Plus className="w-4 h-4" />
-                        </button>
-                      )}
+                      <button onClick={() => openNew(cat.id)} title={t('forms.add_subcategory')}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors">
+                        <Plus className="w-4 h-4" />
+                      </button>
                       <button onClick={() => openEdit(cat)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
                         <Pencil className="w-4 h-4" />
                       </button>
@@ -283,9 +338,9 @@ export function AdminCategoriesPage() {
       {/* Form modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-dark-card rounded-2xl p-6 w-full max-w-md shadow-xl transition-colors duration-200">
+          <div className="bg-white dark:bg-dark-card rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-xl transition-colors duration-200">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-gray-900 dark:text-white">{editing ? t('forms.edit') : form.parent_id ? t('forms.new_subcategory') : 'Nouvelle catégorie'}</h2>
+              <h2 className="font-bold text-gray-900 dark:text-white">{editing ? t('forms.edit') : form.parent_ids.length > 0 ? t('forms.new_subcategory') : 'Nouvelle catégorie'}</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
                 <X className="w-5 h-5" />
               </button>
@@ -293,19 +348,27 @@ export function AdminCategoriesPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('forms.parent_category')}</label>
-                <select
-                  value={form.parent_id}
-                  onChange={e => setForm(prev => ({ ...prev, parent_id: e.target.value }))}
-                  disabled={editingHasChildren}
-                  className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors disabled:opacity-50"
-                >
-                  <option value="">{t('forms.parent_none')}</option>
+                <div className="max-h-44 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg divide-y divide-gray-100 dark:divide-gray-700">
                   {parentOptions.map(p => (
-                    <option key={p.id} value={p.id}>{p.name_fr} / {p.name_ar}</option>
+                    <label key={p.id} className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                      <input
+                        type="checkbox"
+                        checked={form.parent_ids.includes(p.id)}
+                        onChange={() => toggleParent(p.id)}
+                        className="w-4 h-4 text-blue-600 rounded shrink-0"
+                      />
+                      <span className="truncate">{categoryOptionLabel(p, 'both')}</span>
+                    </label>
                   ))}
-                </select>
-                {editingHasChildren && (
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{t('forms.parent_locked')}</p>
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{t('forms.parent_hint')}</p>
+                {form.parent_ids.length > 0 && (
+                  <label className="flex items-center gap-2 mt-2">
+                    <input type="checkbox" checked={form.show_at_root}
+                      onChange={e => setForm(prev => ({ ...prev, show_at_root: e.target.checked }))}
+                      className="w-4 h-4 text-blue-600 rounded" />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">{t('forms.show_at_root')}</span>
+                  </label>
                 )}
               </div>
               <div>

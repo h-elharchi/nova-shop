@@ -14,20 +14,25 @@ export function CategoryPage() {
   const { products, loading } = useProducts({ categorySlug: slug })
 
   const category = categories.find(c => c.slug === slug)
-  const parent = category?.parent_id ? categories.find(c => c.id === category.parent_id) : undefined
+  const parents = category ? categories.filter(c => category.parent_links.some(l => l.parent_id === c.id)) : []
   const subcategories = category ? getChildren(categories, category.id) : []
   const nameOf = (c: { name_fr: string; name_ar: string }) => (lang === 'ar' ? c.name_ar : c.name_fr)
 
   return (
     <Layout>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {parent && (
-          <Link
-            to={`/categories/${parent.slug}`}
-            className="inline-block text-sm text-blue-600 dark:text-blue-400 hover:underline mb-2"
-          >
-            ← {nameOf(parent)}
-          </Link>
+        {parents.length > 0 && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2">
+            {parents.map(parent => (
+              <Link
+                key={parent.id}
+                to={`/categories/${parent.slug}`}
+                className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                ← {nameOf(parent)}
+              </Link>
+            ))}
+          </div>
         )}
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
           {category ? nameOf(category) : slug}

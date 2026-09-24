@@ -37,7 +37,7 @@ export function ProductFiltersBar({ filters, onChange }: ProductFiltersBarProps)
           className={inputCls}
         >
           <option value="">{t('filters.all_categories')}</option>
-          {flattenCategoryTree(categories).map((cat) => (
+          {flattenCategoryTree(categories, true).map((cat) => (
             <option key={cat.id} value={cat.slug}>{categoryOptionLabel(cat, 'both')}</option>
           ))}
         </select>

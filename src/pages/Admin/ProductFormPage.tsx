@@ -270,7 +270,7 @@ export function ProductFormPage() {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('forms.category')}</label>
               <select name="category_id" value={form.category_id} onChange={handleChange} required className={inputCls}>
                 <option value="">{t('forms.select_category')}</option>
-                {flattenCategoryTree(categories).map(c => (
+                {flattenCategoryTree(categories, true).map(c => (
                   <option key={c.id} value={c.id}>{categoryOptionLabel(c, 'both')}</option>
                 ))}
               </select>

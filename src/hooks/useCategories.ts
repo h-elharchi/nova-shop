@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { loadCategories, flattenCategoryTree } from '../lib/categories'
 import type { Category } from '../types'
 
 export function useCategories() {
@@ -12,20 +12,15 @@ export function useCategories() {
     async function fetchCategories() {
       setLoading(true)
       setError(null)
-      const { data, error: err } = await supabase
-        .from('categories')
-        .select('*')
-        .eq('is_active', true)
-        .order('display_order')
-        .order('name_fr')
+      const { data, error: err } = await loadCategories(true)
       if (cancelled) return
       if (err) {
-        setError(err.message)
+        setError(err)
       } else {
-        const all = (data ?? []) as Category[]
-        // Une sous-catégorie dont la catégorie parente est inactive reste masquée.
-        const activeIds = new Set(all.map(c => c.id))
-        setCategories(all.filter(c => !c.parent_id || activeIds.has(c.parent_id)))
+        // Seules les catégories joignables depuis le premier niveau via des parents actifs
+        // restent visibles : une sous-catégorie dont tous les parents sont inactifs est masquée.
+        const reachable = new Set(flattenCategoryTree(data, true).map(c => c.id))
+        setCategories(data.filter(c => reachable.has(c.id)))
       }
       setLoading(false)
     }

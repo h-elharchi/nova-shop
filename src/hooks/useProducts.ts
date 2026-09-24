@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { loadCategories, getDescendantIds } from '../lib/categories'
 import type { Product, ProductFilters } from '../types'
 
 export function useProducts(filters: ProductFilters = {}) {
@@ -58,12 +59,14 @@ export function useProducts(filters: ProductFilters = {}) {
 
       if (categorySlug) {
         // Une catégorie parente inclut aussi les produits de ses sous-catégories.
-        const { data: cats } = await supabase.from('categories').select('*')
+        const { data: all } = await loadCategories(false)
         if (cancelled) return
-        const all = (cats ?? []) as { id: string; slug: string; parent_id: string | null }[]
         const selected = all.find(c => c.slug === categorySlug)
         const allowed = new Set<string>([categorySlug])
-        if (selected) all.filter(c => c.parent_id === selected.id).forEach(c => allowed.add(c.slug))
+        if (selected) {
+          const ids = getDescendantIds(all, selected.id)
+          all.filter(c => ids.has(c.id)).forEach(c => allowed.add(c.slug))
+        }
         result = result.filter((p) => p.category?.slug && allowed.has(p.category.slug))
       }
 

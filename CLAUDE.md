@@ -140,6 +140,7 @@ sql/
 | `fix-email-interaction-bridge.sql` | Liaison email ↔ interactions |
 | `fix-order-callback-trigger.sql` | Trigger commande → rappel |
 | `fix-order-site-flow.sql` | Correctif flux commande site |
+| `fix-category-subcategories.sql` | Sous-catégories multi-parents à profondeur libre : table `category_parents` (anti-cycle par trigger), `categories.show_at_root`. Migre l'ancienne colonne `parent_id` si elle existe. |
 
 ### Diagnostics — `sql/diagnostics/` (lecture seule)
 

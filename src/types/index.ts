@@ -8,9 +8,16 @@ export interface Category {
   image_url: string | null
   is_active: boolean
   display_order: number
-  parent_id: string | null
+  show_at_root: boolean
+  // Liens vers les catégories parentes (table category_parents), renseignés par loadCategories().
+  parent_links: CategoryParentLink[]
   created_at: string
   updated_at: string
+}
+
+export interface CategoryParentLink {
+  parent_id: string
+  display_order: number
 }
 
 export interface ProductImage {
