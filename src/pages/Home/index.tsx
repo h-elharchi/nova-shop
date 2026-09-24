@@ -3,6 +3,7 @@ import { ArrowRight, Truck, MessageCircle, Shield, Star } from 'lucide-react'
 import { useI18n } from '../../context/LanguageContext'
 import { useProducts } from '../../hooks/useProducts'
 import { useCategories } from '../../hooks/useCategories'
+import { getTopLevel } from '../../lib/categories'
 import { ProductCard } from '../../components/products/ProductCard'
 import { WhatsAppButton } from '../../components/whatsapp/WhatsAppButton'
 import { Layout } from '../../components/layout/Layout'
@@ -11,7 +12,8 @@ export function HomePage() {
   const { t, lang, isRTL } = useI18n()
   const { products: newProducts } = useProducts({ onlyAvailable: undefined })
   const { products: featuredProducts } = useProducts({})
-  const { categories } = useCategories()
+  const { categories: allCategories } = useCategories()
+  const categories = getTopLevel(allCategories)
 
   const newItems = newProducts.filter(p => p.is_new).slice(0, 10)
   const featured = featuredProducts.filter(p => p.is_featured).slice(0, 10)

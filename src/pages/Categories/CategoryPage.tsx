@@ -1,8 +1,10 @@
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useI18n } from '../../context/LanguageContext'
 import { useProducts } from '../../hooks/useProducts'
 import { useCategories } from '../../hooks/useCategories'
+import { getChildren } from '../../lib/categories'
 import { ProductCard } from '../../components/products/ProductCard'
+import { CategoryTile } from '../../components/categories/CategoryTile'
 import { Layout } from '../../components/layout/Layout'
 
 export function CategoryPage() {
@@ -12,13 +14,36 @@ export function CategoryPage() {
   const { products, loading } = useProducts({ categorySlug: slug })
 
   const category = categories.find(c => c.slug === slug)
+  const parent = category?.parent_id ? categories.find(c => c.id === category.parent_id) : undefined
+  const subcategories = category ? getChildren(categories, category.id) : []
+  const nameOf = (c: { name_fr: string; name_ar: string }) => (lang === 'ar' ? c.name_ar : c.name_fr)
 
   return (
     <Layout>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {parent && (
+          <Link
+            to={`/categories/${parent.slug}`}
+            className="inline-block text-sm text-blue-600 dark:text-blue-400 hover:underline mb-2"
+          >
+            ← {nameOf(parent)}
+          </Link>
+        )}
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-          {category ? (lang === 'ar' ? category.name_ar : category.name_fr) : slug}
+          {category ? nameOf(category) : slug}
         </h1>
+
+        {subcategories.length > 0 && (
+          <section className="mb-8">
+            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+              {t('sections.subcategories')}
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {subcategories.map(sub => <CategoryTile key={sub.id} category={sub} />)}
+            </div>
+          </section>
+        )}
+
         <p className="text-gray-500 dark:text-gray-400 text-sm mb-8">
           {products.length} {t('nav.products').toLowerCase()}
         </p>

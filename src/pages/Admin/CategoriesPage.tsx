@@ -1,7 +1,8 @@
 import { useState, useEffect, FormEvent, ChangeEvent } from 'react'
-import { PlusCircle, Pencil, Trash2, X, ChevronUp, ChevronDown, Upload, ImageOff } from 'lucide-react'
+import { PlusCircle, Pencil, Trash2, X, ChevronUp, ChevronDown, Upload, ImageOff, CornerDownRight, Plus } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useI18n } from '../../context/LanguageContext'
+import { flattenCategoryTree, getChildren, getTopLevel } from '../../lib/categories'
 import { AdminLayout } from './AdminLayout'
 import type { Category } from '../../types'
 
@@ -11,9 +12,10 @@ interface CategoryForm {
   slug: string
   image_url: string
   is_active: boolean
+  parent_id: string
 }
 
-const empty: CategoryForm = { name_fr: '', name_ar: '', slug: '', image_url: '', is_active: true }
+const empty: CategoryForm = { name_fr: '', name_ar: '', slug: '', image_url: '', is_active: true, parent_id: '' }
 
 function slugify(text: string) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -32,6 +34,8 @@ export function AdminCategoriesPage() {
   const [newImage, setNewImage] = useState<File | null>(null)
   const [newImagePreview, setNewImagePreview] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState('')
+  const [formError, setFormError] = useState('')
+  const [deleteError, setDeleteError] = useState('')
 
   const fetchCategories = async () => {
     setLoading(true)
@@ -42,20 +46,27 @@ export function AdminCategoriesPage() {
 
   useEffect(() => { fetchCategories() }, [])
 
+  // Les flèches réordonnent parmi les catégories de même niveau (même parent).
+  const siblingsOf = (cat: Category) =>
+    cat.parent_id ? getChildren(categories, cat.parent_id) : getTopLevel(categories)
+
   const moveCategory = async (id: string, direction: 'up' | 'down') => {
     if (reordering) return
-    const idx = categories.findIndex(c => c.id === id)
+    const cat = categories.find(c => c.id === id)
+    if (!cat) return
+    const siblings = siblingsOf(cat)
+    const idx = siblings.findIndex(c => c.id === id)
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1
-    if (idx === -1 || targetIdx < 0 || targetIdx >= categories.length) return
+    if (idx === -1 || targetIdx < 0 || targetIdx >= siblings.length) return
 
-    // Renumérote la liste selon l'ordre visuel actuel puis échange les deux positions
-    const reordered = categories.map((c, i) => ({ ...c, display_order: i }))
+    // Renumérote les frères selon l'ordre visuel actuel puis échange les deux positions
+    const reordered = siblings.map((c, i) => ({ ...c, display_order: i }))
     const tmp = reordered[idx].display_order
     reordered[idx].display_order = reordered[targetIdx].display_order
     reordered[targetIdx].display_order = tmp
-    reordered.sort((a, b) => a.display_order - b.display_order)
 
-    setCategories(reordered)
+    const newOrder = new Map(reordered.map(c => [c.id, c.display_order]))
+    setCategories(prev => prev.map(c => newOrder.has(c.id) ? { ...c, display_order: newOrder.get(c.id)! } : c))
     setReordering(true)
     await Promise.all(
       reordered.map(c => supabase.from('categories').update({ display_order: c.display_order }).eq('id', c.id))
@@ -67,15 +78,25 @@ export function AdminCategoriesPage() {
     setNewImage(null)
     setNewImagePreview(prev => { if (prev) URL.revokeObjectURL(prev); return null })
     setUploadError('')
+    setFormError('')
   }
 
-  const openNew = () => { setEditing(null); setForm(empty); resetImageState(); setShowForm(true) }
-  const openEdit = (cat: Category) => {
-    setEditing(cat)
-    setForm({ name_fr: cat.name_fr, name_ar: cat.name_ar, slug: cat.slug, image_url: cat.image_url ?? '', is_active: cat.is_active })
+  const openNew = (parentId = '') => {
+    setEditing(null)
+    setForm({ ...empty, parent_id: parentId })
     resetImageState()
     setShowForm(true)
   }
+  const openEdit = (cat: Category) => {
+    setEditing(cat)
+    setForm({ name_fr: cat.name_fr, name_ar: cat.name_ar, slug: cat.slug, image_url: cat.image_url ?? '', is_active: cat.is_active, parent_id: cat.parent_id ?? '' })
+    resetImageState()
+    setShowForm(true)
+  }
+
+  // Une catégorie qui a des sous-catégories ne peut pas devenir une sous-catégorie.
+  const editingHasChildren = editing ? getChildren(categories, editing.id).length > 0 : false
+  const parentOptions = getTopLevel(categories).filter(c => c.id !== editing?.id)
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target
@@ -121,11 +142,18 @@ export function AdminCategoriesPage() {
       imageUrl = urlData.publicUrl
     }
 
-    const payload = { ...form, image_url: imageUrl }
-    if (editing) {
-      await supabase.from('categories').update(payload).eq('id', editing.id)
-    } else {
-      await supabase.from('categories').insert({ ...payload, display_order: categories.length })
+    const parentId = form.parent_id || null
+    const payload = { ...form, image_url: imageUrl, parent_id: parentId }
+    const { error: saveErr } = editing
+      ? await supabase.from('categories').update(payload).eq('id', editing.id)
+      : await supabase.from('categories').insert({
+          ...payload,
+          display_order: categories.filter(c => (c.parent_id ?? null) === parentId).length,
+        })
+    if (saveErr) {
+      setFormError(saveErr.message)
+      setSaving(false)
+      return
     }
     setSaving(false)
     setShowForm(false)
@@ -133,17 +161,26 @@ export function AdminCategoriesPage() {
     fetchCategories()
   }
 
+  const openDelete = (id: string) => { setDeleteError(''); setDeleteId(id) }
+
   const handleDelete = async (id: string) => {
-    await supabase.from('categories').delete().eq('id', id)
+    const { error: delErr } = await supabase.from('categories').delete().eq('id', id)
+    if (delErr) {
+      setDeleteError(delErr.message)
+      return
+    }
     setCategories(prev => prev.filter(c => c.id !== id))
     setDeleteId(null)
   }
+
+  const deleteHasChildren = deleteId ? getChildren(categories, deleteId).length > 0 : false
+  const tree = flattenCategoryTree(categories)
 
   return (
     <AdminLayout>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('admin.categories')}</h1>
-        <button onClick={openNew}
+        <button onClick={() => openNew()}
           className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors">
           <PlusCircle className="w-4 h-4" />
           Ajouter
@@ -167,14 +204,17 @@ export function AdminCategoriesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
-              {categories.map((cat, index) => (
-                <tr key={cat.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+              {tree.map(cat => {
+                const siblings = siblingsOf(cat)
+                const pos = siblings.findIndex(c => c.id === cat.id)
+                return (
+                <tr key={cat.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors ${cat.depth === 1 ? 'bg-gray-50/50 dark:bg-gray-800/30' : ''}`}>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
+                    <div className={`flex items-center gap-1 ${cat.depth === 1 ? 'pl-4' : ''}`}>
                       <button
                         type="button"
                         onClick={() => moveCategory(cat.id, 'up')}
-                        disabled={index === 0 || reordering}
+                        disabled={pos === 0 || reordering}
                         title="Monter"
                         className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-30 disabled:pointer-events-none"
                       >
@@ -183,7 +223,7 @@ export function AdminCategoriesPage() {
                       <button
                         type="button"
                         onClick={() => moveCategory(cat.id, 'down')}
-                        disabled={index === categories.length - 1 || reordering}
+                        disabled={pos === siblings.length - 1 || reordering}
                         title="Descendre"
                         className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-30 disabled:pointer-events-none"
                       >
@@ -192,7 +232,8 @@ export function AdminCategoriesPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2.5">
+                    <div className={`flex items-center gap-2.5 ${cat.depth === 1 ? 'pl-4' : ''}`}>
+                      {cat.depth === 1 && <CornerDownRight className="w-4 h-4 text-gray-300 dark:text-gray-600 shrink-0" />}
                       {cat.image_url ? (
                         <img src={cat.image_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
                       ) : (
@@ -214,16 +255,23 @@ export function AdminCategoriesPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
+                      {cat.depth === 0 && (
+                        <button onClick={() => openNew(cat.id)} title={t('forms.add_subcategory')}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors">
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      )}
                       <button onClick={() => openEdit(cat)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
                         <Pencil className="w-4 h-4" />
                       </button>
-                      <button onClick={() => setDeleteId(cat.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                      <button onClick={() => openDelete(cat.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
           {categories.length === 0 && (
@@ -237,12 +285,29 @@ export function AdminCategoriesPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-dark-card rounded-2xl p-6 w-full max-w-md shadow-xl transition-colors duration-200">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-gray-900 dark:text-white">{editing ? t('forms.edit') : 'Nouvelle catégorie'}</h2>
+              <h2 className="font-bold text-gray-900 dark:text-white">{editing ? t('forms.edit') : form.parent_id ? t('forms.new_subcategory') : 'Nouvelle catégorie'}</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('forms.parent_category')}</label>
+                <select
+                  value={form.parent_id}
+                  onChange={e => setForm(prev => ({ ...prev, parent_id: e.target.value }))}
+                  disabled={editingHasChildren}
+                  className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors disabled:opacity-50"
+                >
+                  <option value="">{t('forms.parent_none')}</option>
+                  {parentOptions.map(p => (
+                    <option key={p.id} value={p.id}>{p.name_fr} / {p.name_ar}</option>
+                  ))}
+                </select>
+                {editingHasChildren && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{t('forms.parent_locked')}</p>
+                )}
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('forms.name_fr')}</label>
                 <input name="name_fr" value={form.name_fr} onChange={handleChange} required
@@ -292,6 +357,7 @@ export function AdminCategoriesPage() {
                 <input type="checkbox" name="is_active" checked={form.is_active} onChange={handleChange} className="w-4 h-4 text-blue-600 rounded" />
                 <span className="text-sm text-gray-700 dark:text-gray-300">{t('forms.is_active')}</span>
               </label>
+              {formError && <p className="text-xs text-red-500">{formError}</p>}
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowForm(false)}
                   className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">{t('forms.cancel')}</button>
@@ -308,10 +374,13 @@ export function AdminCategoriesPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-dark-card rounded-2xl p-6 max-w-sm w-full shadow-xl transition-colors duration-200">
             <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{t('forms.confirm_delete')}</h2>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">{t('forms.confirm_delete_msg')}</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
+              {deleteHasChildren ? t('forms.delete_has_subcategories') : t('forms.confirm_delete_msg')}
+            </p>
+            {deleteError && <p className="text-xs text-red-500 mb-4">{deleteError}</p>}
             <div className="flex gap-3">
               <button onClick={() => setDeleteId(null)} className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">{t('forms.cancel')}</button>
-              <button onClick={() => handleDelete(deleteId)} className="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700">{t('forms.delete')}</button>
+              <button onClick={() => handleDelete(deleteId)} disabled={deleteHasChildren} className="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-40 disabled:pointer-events-none">{t('forms.delete')}</button>
             </div>
           </div>
         </div>

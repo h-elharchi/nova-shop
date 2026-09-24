@@ -1,5 +1,6 @@
 import { useI18n } from '../../context/LanguageContext'
 import { useCategories } from '../../hooks/useCategories'
+import { flattenCategoryTree, categoryOptionLabel } from '../../lib/categories'
 import type { ProductFilters } from '../../types'
 
 interface ProductFiltersBarProps {
@@ -36,8 +37,8 @@ export function ProductFiltersBar({ filters, onChange }: ProductFiltersBarProps)
           className={inputCls}
         >
           <option value="">{t('filters.all_categories')}</option>
-          {categories.map((cat) => (
-            <option key={cat.id} value={cat.slug}>{cat.name_fr} / {cat.name_ar}</option>
+          {flattenCategoryTree(categories).map((cat) => (
+            <option key={cat.id} value={cat.slug}>{categoryOptionLabel(cat, 'both')}</option>
           ))}
         </select>
       </div>

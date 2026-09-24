@@ -4,6 +4,7 @@ import { Upload, X, ArrowLeft, Play } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useI18n } from '../../context/LanguageContext'
 import { useCategories } from '../../hooks/useCategories'
+import { flattenCategoryTree, categoryOptionLabel } from '../../lib/categories'
 import { AdminLayout } from './AdminLayout'
 import type { Product, ProductImage, ProductVideo } from '../../types'
 
@@ -269,8 +270,8 @@ export function ProductFormPage() {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('forms.category')}</label>
               <select name="category_id" value={form.category_id} onChange={handleChange} required className={inputCls}>
                 <option value="">{t('forms.select_category')}</option>
-                {categories.map(c => (
-                  <option key={c.id} value={c.id}>{c.name_fr} / {c.name_ar}</option>
+                {flattenCategoryTree(categories).map(c => (
+                  <option key={c.id} value={c.id}>{categoryOptionLabel(c, 'both')}</option>
                 ))}
               </select>
             </div>

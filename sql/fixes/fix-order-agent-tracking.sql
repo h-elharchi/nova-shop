@@ -20,10 +20,14 @@
 -- Exécuter dans Supabase SQL Editor.
 
 -- ─── 1. Table d'historique ────────────────────────────────────
+-- actor_id référence directement public.profiles (pas auth.users) : c'est ce
+-- que PostgREST exige pour pouvoir résoudre profiles!actor_id(...) côté
+-- frontend — voir fix-orders-foreign-keys.sql pour la même correction sur
+-- orders.assigned_agent_id.
 CREATE TABLE IF NOT EXISTS order_status_history (
   id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id   UUID        NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-  actor_id   UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+  actor_id   UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
   old_status TEXT,
   new_status TEXT        NOT NULL,
   note       TEXT,

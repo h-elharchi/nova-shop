@@ -22,7 +22,10 @@ export function useCategories() {
       if (err) {
         setError(err.message)
       } else {
-        setCategories(data ?? [])
+        const all = (data ?? []) as Category[]
+        // Une sous-catégorie dont la catégorie parente est inactive reste masquée.
+        const activeIds = new Set(all.map(c => c.id))
+        setCategories(all.filter(c => !c.parent_id || activeIds.has(c.parent_id)))
       }
       setLoading(false)
     }

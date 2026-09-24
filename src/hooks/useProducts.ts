@@ -57,7 +57,14 @@ export function useProducts(filters: ProductFilters = {}) {
       }))
 
       if (categorySlug) {
-        result = result.filter((p) => p.category?.slug === categorySlug)
+        // Une catégorie parente inclut aussi les produits de ses sous-catégories.
+        const { data: cats } = await supabase.from('categories').select('*')
+        if (cancelled) return
+        const all = (cats ?? []) as { id: string; slug: string; parent_id: string | null }[]
+        const selected = all.find(c => c.slug === categorySlug)
+        const allowed = new Set<string>([categorySlug])
+        if (selected) all.filter(c => c.parent_id === selected.id).forEach(c => allowed.add(c.slug))
+        result = result.filter((p) => p.category?.slug && allowed.has(p.category.slug))
       }
 
       setProducts(result)
